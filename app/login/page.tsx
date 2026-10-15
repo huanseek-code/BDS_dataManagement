@@ -67,8 +67,8 @@ export default function LoginPage() {
                   type="email"
                   name="email"
                   required
-                  defaultValue="admin@huanseek.com"
-                  placeholder="admin@huanseek.com"
+                  autoComplete="email"
+                  placeholder="name@company.com"
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition bg-slate-50 focus:bg-white"
                 />
               </div>
@@ -84,7 +84,7 @@ export default function LoginPage() {
                   type="password"
                   name="password"
                   required
-                  defaultValue="Admin@123456"
+                  autoComplete="current-password"
                   placeholder="••••••••"
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition bg-slate-50 focus:bg-white"
                 />
