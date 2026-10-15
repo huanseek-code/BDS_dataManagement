@@ -17,6 +17,7 @@ import {
   Layers,
   Sparkles,
   Loader2,
+  GitMerge,
 } from "lucide-react";
 
 export function InboxView({
@@ -133,6 +134,42 @@ export function InboxView({
     }
   };
 
+  const handleMerge = async (sourceId: string) => {
+    if (!selectedListing || !sourceId) return;
+    if (!confirm("Bạn có chắc muốn dùng AI gộp 2 tin nhắn này của đối tác làm một?")) return;
+    setIsSubmitting(true);
+    try {
+      const res = await fetch("/api/inbox/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetListingId: selectedListing.id,
+          sourceListingId: sourceId,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        alert("Lỗi khi gộp: " + (data.error || "Không thể gộp"));
+        return;
+      }
+
+      alert("🎉 Đã dùng AI gộp 2 tin thành 1 căn BĐS hoàn chỉnh!");
+      const updatedList = listings
+        .filter((l) => l.id !== sourceId)
+        .map((l) => (l.id === selectedListing.id ? { ...l, ...data.updatedListing } : l));
+      setListings(updatedList);
+      const newSelected = updatedList.find((l) => l.id === selectedListing.id) || updatedList[0];
+      setSelectedListing(newSelected);
+      if (newSelected) setFormState(extractFormData(newSelected));
+      router.refresh();
+    } catch (err: any) {
+      alert("Lỗi: " + err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
       {/* Left List of Listings (4 cols) */}
@@ -223,6 +260,25 @@ export function InboxView({
 
               {/* Action Buttons */}
               <div className="flex items-center gap-2">
+                {listings.filter(
+                  (l) => l.id !== selectedListing.id && l.partner_id === selectedListing.partner_id
+                ).length > 0 && (
+                  <button
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={() => {
+                      const sibling = listings.find(
+                        (l) => l.id !== selectedListing.id && l.partner_id === selectedListing.partner_id
+                      );
+                      if (sibling) handleMerge(sibling.id);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold shadow transition cursor-pointer disabled:opacity-50"
+                    title="Gộp dữ liệu với tin nhắn khác của đối tác này bằng AI"
+                  >
+                    <GitMerge className="w-3.5 h-3.5" />
+                    <span>Gộp tin đối tác</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   disabled={isSubmitting}
