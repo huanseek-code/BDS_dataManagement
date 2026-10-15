@@ -1,0 +1,16 @@
+name: Automated Cron Tick
+
+on:
+  schedule:
+    # Run every 5 minutes to process expired message batches
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  cron-tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Cron Tick Endpoint
+        run: |
+          curl -s -X GET "https://bds-data-management.vercel.app/api/cron/tick" \
+            -H "x-cron-secret: huanseek_internal_cron_secret_2026_secure"
