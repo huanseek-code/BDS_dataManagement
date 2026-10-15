@@ -1,0 +1,91 @@
+{
+  "common": {
+    "appName": "Huanseek Real Estate",
+    "adminTitle": "Real Estate Data Management System",
+    "search": "Search...",
+    "filter": "Filter",
+    "reset": "Reset",
+    "exportExcel": "Export Excel",
+    "save": "Save Changes",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "delete": "Delete",
+    "edit": "Edit",
+    "approve": "Approve to Database",
+    "merge": "Merge to Existing Property",
+    "reject": "Reject",
+    "status": "Status",
+    "actions": "Actions",
+    "loading": "Loading...",
+    "noData": "No data found",
+    "language": "Language",
+    "logout": "Log out",
+    "login": "Log in",
+    "refresh": "Refresh",
+    "all": "All"
+  },
+  "nav": {
+    "inbox": "Pending Review",
+    "properties": "Property Database",
+    "partners": "Partners",
+    "settings": "Settings"
+  },
+  "columns": {
+    "code": "Property Code",
+    "address": "Address / Location",
+    "types": "Type / Purpose",
+    "floorArea": "Floor Area (m²)",
+    "totalLeaseArea": "Total Lease Area (m²)",
+    "price": "Asking Price (Currency/Period)",
+    "keyDetails": "Key Details",
+    "partner": "External Supplier Partner",
+    "partnerFirstSeen": "Partner First Provided Time",
+    "zaloSenderTime": "Zalo Sender & Message Time",
+    "entryTime": "System Entry Time",
+    "landlordCommission": "Landlord Commission",
+    "ourShare": "Our Commission Share",
+    "attachments": "Photos / Attachments Link",
+    "originalMessage": "Original Message & Reference"
+  },
+  "bilingualColumns": {
+    "code": "Property Code\nMã BĐS",
+    "address": "Address / Location\nĐịa chỉ/vị trí",
+    "types": "Type / Purpose\nLoại hình/mục đích sử dụng",
+    "floorArea": "Floor Area (m²)\nDiện tích một tầng (m²)",
+    "totalLeaseArea": "Total Lease Area (m²)\nTổng diện tích cho thuê (m²)",
+    "price": "Asking Price\nGiá chào (tiền tệ/kỳ)",
+    "keyDetails": "Key Details\nChi tiết chính",
+    "partner": "External Partner\nĐối tác cung cấp bên ngoài",
+    "partnerFirstSeen": "Partner First Provided\nThời điểm đối tác cung cấp lần đầu",
+    "zaloSenderTime": "Zalo Sender & Time\nNgười gửi và giờ tin Zalo",
+    "entryTime": "System Entry Time\nThời điểm nhập hệ thống",
+    "landlordCommission": "Landlord Commission\nHoa hồng do chủ nhà trả",
+    "ourShare": "Our Share\nPhần hoa hồng bên mình",
+    "attachments": "Attachments Link\nLink ảnh/tệp đính kèm",
+    "originalMessage": "Original Message\nNội dung gốc và ID/link tin nhắn"
+  },
+  "types": {
+    "factory": "Factory",
+    "warehouse": "Warehouse",
+    "office": "Office",
+    "retail": "Retail Space",
+    "townhouse": "Townhouse",
+    "villa": "Villa",
+    "apartment": "Apartment",
+    "land": "Land",
+    "hotel": "Hotel",
+    "other": "Other"
+  },
+  "reviewStatus": {
+    "pending": "Pending Review",
+    "approved": "Approved",
+    "merged": "Merged",
+    "rejected": "Rejected"
+  },
+  "propertyStatus": {
+    "active": "Active",
+    "rented": "Rented",
+    "sold": "Sold",
+    "inactive": "Inactive"
+  }
+}

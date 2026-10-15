@@ -1,0 +1,91 @@
+{
+  "common": {
+    "appName": "Huanseek 房地产",
+    "adminTitle": "房地产数据管理系统",
+    "search": "搜索...",
+    "filter": "筛选",
+    "reset": "重置",
+    "exportExcel": "导出 Excel",
+    "save": "保存修改",
+    "cancel": "取消",
+    "confirm": "确认",
+    "delete": "删除",
+    "edit": "编辑",
+    "approve": "审核入库",
+    "merge": "合并到已有房源",
+    "reject": "拒绝",
+    "status": "状态",
+    "actions": "操作",
+    "loading": "加载中...",
+    "noData": "暂无数据",
+    "language": "语言",
+    "logout": "退出登录",
+    "login": "登录",
+    "refresh": "刷新",
+    "all": "全部"
+  },
+  "nav": {
+    "inbox": "待审核",
+    "properties": "房源库",
+    "partners": "合作伙伴",
+    "settings": "系统设置"
+  },
+  "columns": {
+    "code": "房源代号",
+    "address": "地址/位置",
+    "types": "类型/用途 (可选)",
+    "floorArea": "单层面积 (㎡)",
+    "totalLeaseArea": "出租总面积 (㎡)",
+    "price": "报价 (含币种/期限)",
+    "keyDetails": "关键细节",
+    "partner": "外部供应合作伙伴",
+    "partnerFirstSeen": "合作伙伴首次提供时间",
+    "zaloSenderTime": "Zalo 发信人及时间",
+    "entryTime": "入库时间 (系统)",
+    "landlordCommission": "房东给的佣金",
+    "ourShare": "我方分成",
+    "attachments": "照片/附件链接",
+    "originalMessage": "原始信息及消息引用"
+  },
+  "bilingualColumns": {
+    "code": "房源代号\nMã BĐS",
+    "address": "地址/位置\nĐịa chỉ/vị trí",
+    "types": "类型/用途 (可选)\nLoại hình/mục đích sử dụng",
+    "floorArea": "单层面积 (㎡)\nDiện tích một tầng (m²)",
+    "totalLeaseArea": "出租总面积 (㎡)\nTổng diện tích cho thuê (m²)",
+    "price": "报价 (含币种/期限)\nGiá chào (tiền tệ/kỳ)",
+    "keyDetails": "关键细节\nChi tiết chính",
+    "partner": "外部供应合作伙伴\nĐối tác cung cấp bên ngoài",
+    "partnerFirstSeen": "合作伙伴首次提供时间\nThời điểm đối tác cung cấp lần đầu",
+    "zaloSenderTime": "Zalo 发信人及时间\nNgười gửi và giờ tin Zalo",
+    "entryTime": "入库时间 (系统)\nThời điểm nhập hệ thống",
+    "landlordCommission": "房东给的佣金\nHoa hồng do chủ nhà trả",
+    "ourShare": "我方分成\nPhần hoa hồng bên mình",
+    "attachments": "照片/附件链接\nLink ảnh/tệp đính kèm",
+    "originalMessage": "原始信息及消息引用\nNội dung gốc và ID/link tin nhắn"
+  },
+  "types": {
+    "factory": "厂房",
+    "warehouse": "仓库",
+    "office": "办公室",
+    "retail": "商铺",
+    "townhouse": "临街房",
+    "villa": "别墅",
+    "apartment": "公寓",
+    "land": "土地",
+    "hotel": "酒店",
+    "other": "其他"
+  },
+  "reviewStatus": {
+    "pending": "待审核",
+    "approved": "已入库",
+    "merged": "已合并",
+    "rejected": "已拒绝"
+  },
+  "propertyStatus": {
+    "active": "出租中",
+    "rented": "已出租",
+    "sold": "已出售",
+    "inactive": "已停租"
+  }
+}

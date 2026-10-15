@@ -1,0 +1,91 @@
+{
+  "common": {
+    "appName": "Huanseek Real Estate",
+    "adminTitle": "Hệ thống Quản lý Dữ liệu BĐS",
+    "search": "Tìm kiếm...",
+    "filter": "Bộ lọc",
+    "reset": "Đặt lại",
+    "exportExcel": "Xuất Excel",
+    "save": "Lưu thay đổi",
+    "cancel": "Hủy",
+    "confirm": "Xác nhận",
+    "delete": "Xóa",
+    "edit": "Chỉnh sửa",
+    "approve": "Duyệt vào kho",
+    "merge": "Gộp vào căn có sẵn",
+    "reject": "Từ chối",
+    "status": "Trạng thái",
+    "actions": "Hành động",
+    "loading": "Đang tải...",
+    "noData": "Không có dữ liệu",
+    "language": "Ngôn ngữ",
+    "logout": "Đăng xuất",
+    "login": "Đăng nhập",
+    "refresh": "Làm mới",
+    "all": "Tất cả"
+  },
+  "nav": {
+    "inbox": "Chờ duyệt",
+    "properties": "Kho BĐS",
+    "partners": "Đối tác",
+    "settings": "Cài đặt"
+  },
+  "columns": {
+    "code": "Mã BĐS",
+    "address": "Địa chỉ/Vị trí",
+    "types": "Loại hình/Mục đích",
+    "floorArea": "Diện tích một tầng (m²)",
+    "totalLeaseArea": "Tổng diện tích cho thuê (m²)",
+    "price": "Giá chào (tiền tệ/kỳ)",
+    "keyDetails": "Chi tiết chính",
+    "partner": "Đối tác cung cấp bên ngoài",
+    "partnerFirstSeen": "Thời điểm đối tác cung cấp lần đầu",
+    "zaloSenderTime": "Người gửi và giờ tin Zalo",
+    "entryTime": "Thời điểm nhập hệ thống",
+    "landlordCommission": "Hoa hồng do chủ nhà trả",
+    "ourShare": "Phần hoa hồng bên mình",
+    "attachments": "Link ảnh/tệp đính kèm",
+    "originalMessage": "Nội dung gốc và ID/link tin nhắn"
+  },
+  "bilingualColumns": {
+    "code": "房源代号\nMã BĐS",
+    "address": "地址/位置\nĐịa chỉ/vị trí",
+    "types": "类型/用途 (可选)\nLoại hình/mục đích sử dụng",
+    "floorArea": "单层面积 (㎡)\nDiện tích một tầng (m²)",
+    "totalLeaseArea": "出租总面积 (㎡)\nTổng diện tích cho thuê (m²)",
+    "price": "报价 (含币种/期限)\nGiá chào (tiền tệ/kỳ)",
+    "keyDetails": "关键细节\nChi tiết chính",
+    "partner": "外部供应合作伙伴\nĐối tác cung cấp bên ngoài",
+    "partnerFirstSeen": "合作伙伴首次提供时间\nThời điểm đối tác cung cấp lần đầu",
+    "zaloSenderTime": "Zalo 发信人及时间\nNgười gửi và giờ tin Zalo",
+    "entryTime": "入库时间 ( 系统 )\nThời điểm nhập hệ thống",
+    "landlordCommission": "房东给的佣金\nHoa hồng do chủ nhà trả",
+    "ourShare": "我方分成\nPhần hoa hồng bên mình",
+    "attachments": "照片/附件链接\nLink ảnh/tệp đính kèm",
+    "originalMessage": "原始信息及消息引用\nNội dung gốc và ID/link tin nhắn"
+  },
+  "types": {
+    "factory": "Nhà xưởng",
+    "warehouse": "Kho bãi",
+    "office": "Văn phòng",
+    "retail": "Mặt bằng kinh doanh",
+    "townhouse": "Nhà phố",
+    "villa": "Biệt thự",
+    "apartment": "Căn hộ",
+    "land": "Đất",
+    "hotel": "Khách sạn",
+    "other": "Khác"
+  },
+  "reviewStatus": {
+    "pending": "Chờ duyệt",
+    "approved": "Đã duyệt",
+    "merged": "Đã gộp",
+    "rejected": "Từ chối"
+  },
+  "propertyStatus": {
+    "active": "Đang chào thuê",
+    "rented": "Đã cho thuê",
+    "sold": "Đã bán",
+    "inactive": "Tạm dừng"
+  }
+}
