@@ -298,7 +298,7 @@ export async function POST(req: NextRequest) {
                   .update({
                     ai_status: "done",
                     ai_mode: "ai_realtime",
-                    ai_model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+                    ai_model: process.env.GEMINI_MODEL || "gemini-flash-latest",
                   })
                   .eq("id", subId);
 

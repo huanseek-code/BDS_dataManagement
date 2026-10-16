@@ -141,7 +141,7 @@ async function handleCronTick(req: NextRequest) {
                 status: "done",
                 ai_status: "done",
                 ai_mode: "ai",
-                ai_model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+                ai_model: process.env.GEMINI_MODEL || "gemini-flash-latest",
               })
               .eq("id", sub.submission_id);
           } catch (aiErr: any) {

@@ -6,7 +6,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-const modelId = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const modelId = process.env.GEMINI_MODEL || 'gemini-flash-latest';
 
 const systemPrompt = `
 Bạn là chuyên gia bóc tách dữ liệu Bất động sản (BĐS) chuyên nghiệp hàng đầu cho Huanseek.

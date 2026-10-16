@@ -1,13 +1,19 @@
 const { GoogleGenAI, Type } = require("@google/genai");
 
-const apiKey = process.env.GEMINI_API_KEY || "";
-if (!apiKey) {
-  console.error("❌ GEMINI_API_KEY is not configured in environment.");
+const rawMultiKeys = process.env.GEMINI_API_KEYS || "";
+const singleKey = process.env.GEMINI_API_KEY || "";
+const keysFromMulti = rawMultiKeys.split(/[,\n;]/).map((k) => k.trim()).filter((k) => k.length > 5);
+const apiKeys = [...keysFromMulti];
+if (singleKey && singleKey.trim().length > 5 && !apiKeys.includes(singleKey.trim())) {
+  apiKeys.push(singleKey.trim());
+}
+
+if (apiKeys.length === 0) {
+  console.error("❌ No GEMINI_API_KEY or GEMINI_API_KEYS configured.");
   process.exit(1);
 }
 
-const modelId = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-const ai = new GoogleGenAI({ apiKey });
+const modelId = process.env.GEMINI_MODEL || "gemini-flash-latest";
 
 const systemPrompt = `
 Bạn là chuyên gia bóc tách dữ liệu Bất động sản (BĐS) chuyên nghiệp hàng đầu cho Huanseek.
@@ -51,6 +57,21 @@ QUY TẮC CỐT LÕI:
 6. CHU KỲ GIÁ (price_period): Chỉ chọn "month", "year", hoặc "one_time".
 `;
 
+const GEMINI_3X_MODELS = Array.from(
+  new Set([
+    process.env.GEMINI_MODEL || "gemini-flash-latest",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-flash-lite-latest",
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-3.1-flash-lite",
+  ])
+).filter(Boolean);
+
+let keyIndex = 0;
+
 async function callGemini(rawText, existingContext = null) {
   const hasContext = Boolean(existingContext && existingContext.trim().length > 0);
   const contextRules = hasContext
@@ -72,73 +93,91 @@ async function callGemini(rawText, existingContext = null) {
 
   let response;
   let lastErr;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      response = await ai.models.generateContent({
-        model: modelId,
-        contents: [{ role: "user", parts: [{ text: promptUserText }] }],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              decision: { type: Type.STRING },
+
+  for (let k = 0; k < apiKeys.length; k++) {
+    const curKey = apiKeys[(keyIndex + k) % apiKeys.length];
+    const masked = `${curKey.slice(0, 6)}...${curKey.slice(-4)}`;
+    const ai = new GoogleGenAI({ apiKey: curKey });
+
+    for (const m of GEMINI_3X_MODELS) {
+      try {
+        response = await ai.models.generateContent({
+          model: m,
+          contents: [{ role: "user", parts: [{ text: promptUserText }] }],
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
               properties: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    source_text_snippet: { type: Type.STRING },
-                    address_text: { type: Type.STRING },
-                    house_number: { type: Type.STRING, nullable: true },
-                    street_name: { type: Type.STRING, nullable: true },
-                    ward: { type: Type.STRING, nullable: true },
-                    district_legacy: { type: Type.STRING, nullable: true },
-                    province: { type: Type.STRING, nullable: true },
-                    property_types: { type: Type.ARRAY, items: { type: Type.STRING } },
-                    floor_area_m2: { type: Type.NUMBER, nullable: true },
-                    total_lease_area_m2: { type: Type.NUMBER, nullable: true },
-                    price_amount: { type: Type.NUMBER, nullable: true },
-                    price_currency: { type: Type.STRING },
-                    price_period: { type: Type.STRING },
-                    price_basis: { type: Type.STRING },
-                    price_text: { type: Type.STRING, nullable: true },
-                    key_details: {
-                      type: Type.OBJECT,
-                      properties: {
-                        vi: { type: Type.STRING },
-                        en: { type: Type.STRING },
-                        zh: { type: Type.STRING },
+                decision: { type: Type.STRING },
+                properties: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      source_text_snippet: { type: Type.STRING },
+                      address_text: { type: Type.STRING },
+                      house_number: { type: Type.STRING, nullable: true },
+                      street_name: { type: Type.STRING, nullable: true },
+                      ward: { type: Type.STRING, nullable: true },
+                      district_legacy: { type: Type.STRING, nullable: true },
+                      province: { type: Type.STRING, nullable: true },
+                      property_types: { type: Type.ARRAY, items: { type: Type.STRING } },
+                      floor_area_m2: { type: Type.NUMBER, nullable: true },
+                      total_lease_area_m2: { type: Type.NUMBER, nullable: true },
+                      price_amount: { type: Type.NUMBER, nullable: true },
+                      price_currency: { type: Type.STRING },
+                      price_period: { type: Type.STRING },
+                      price_basis: { type: Type.STRING },
+                      price_text: { type: Type.STRING, nullable: true },
+                      key_details: {
+                        type: Type.OBJECT,
+                        properties: {
+                          vi: { type: Type.STRING },
+                          en: { type: Type.STRING },
+                          zh: { type: Type.STRING },
+                        },
+                        required: ["vi", "en", "zh"],
                       },
-                      required: ["vi", "en", "zh"],
+                      landlord_commission_text: { type: Type.STRING, nullable: true },
+                      our_share_percent: { type: Type.NUMBER, nullable: true },
+                      our_share_text: { type: Type.STRING, nullable: true },
                     },
-                    landlord_commission_text: { type: Type.STRING, nullable: true },
-                    our_share_percent: { type: Type.NUMBER, nullable: true },
-                    our_share_text: { type: Type.STRING, nullable: true },
+                    required: [
+                      "address_text",
+                      "property_types",
+                      "price_currency",
+                      "price_period",
+                      "price_basis",
+                      "key_details",
+                    ],
                   },
-                  required: [
-                    "address_text",
-                    "property_types",
-                    "price_currency",
-                    "price_period",
-                    "price_basis",
-                    "key_details",
-                  ],
                 },
+                needs_reply: { type: Type.BOOLEAN },
+                reply_suggestion: { type: Type.STRING, nullable: true },
               },
-              needs_reply: { type: Type.BOOLEAN },
-              reply_suggestion: { type: Type.STRING, nullable: true },
+              required: ["properties", "needs_reply"],
             },
-            required: ["properties", "needs_reply"],
           },
-        },
-      });
-      if (response) break;
-    } catch (e) {
-      lastErr = e;
-      if (attempt < 3) {
-        console.warn(`[Attempt ${attempt}/3] Gemini demand spike (${e.message}). Waiting 2s before retry...`);
-        await new Promise((r) => setTimeout(r, 2000));
+        });
+        if (response && response.text) {
+          keyIndex = (keyIndex + k + 1) % apiKeys.length;
+          return JSON.parse(response.text || "{}");
+        }
+      } catch (e) {
+        lastErr = e;
+        const msg = String(e.message || "");
+        if (msg.includes("429") || msg.includes("RESOURCE_EXHAUSTED")) {
+          console.warn(`[Key ${masked} - Model ${m}] Chạm 429 quota. Đang trượt xuống model Gemini 3.x tiếp theo...`);
+          continue;
+        } else if (msg.includes("503") || msg.includes("high demand")) {
+          console.warn(`[Model ${m}] Gặp lỗi / spike 503. Chuyển sang model Gemini 3.x tiếp theo...`);
+          await new Promise((r) => setTimeout(r, 1200));
+          continue;
+        } else {
+          console.warn(`[Model ${m}] Lỗi: ${msg.slice(0, 70)}...`);
+          continue;
+        }
       }
     }
   }

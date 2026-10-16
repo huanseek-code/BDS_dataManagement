@@ -1,5 +1,6 @@
 import "server-only";
-import { GoogleGenAI, Type } from "@google/genai";
+import { Type } from "@google/genai";
+import { executeWithKeyRotation } from "./key-manager";
 
 export interface ExtractedProperty {
   source_text_snippet: string | null;
@@ -39,14 +40,6 @@ export async function extractPropertiesFromChat(
   imageUrls: string[] = [],
   existingContext?: string | null
 ): Promise<ExtractionResult> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY is not configured.");
-  }
-
-  const modelId = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-  const ai = new GoogleGenAI({ apiKey });
-
   const hasContext = Boolean(existingContext && existingContext.trim().length > 0);
 
   const systemPrompt = `
@@ -131,93 +124,83 @@ ${rawText}`;
       },
     ];
 
-    let response;
-    let lastErr;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        response = await ai.models.generateContent({
-          model: modelId,
-          contents,
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                decision: {
-                  type: Type.STRING,
-                  description: "CONTINUATION (bổ sung cho căn trước) hoặc NEW_PROPERTY (căn BĐS mới)",
-                },
-                properties: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      source_text_snippet: {
-                        type: Type.STRING,
-                        description: "Đoạn tin nhắn gốc nguyên văn của riêng căn BĐS này",
-                      },
-                      address_text: { type: Type.STRING },
-                      house_number: { type: Type.STRING, nullable: true },
-                      street_name: { type: Type.STRING, nullable: true },
-                      ward: { type: Type.STRING, nullable: true },
-                      district_legacy: { type: Type.STRING, nullable: true },
-                      province: { type: Type.STRING, nullable: true },
-                      property_types: {
-                        type: Type.ARRAY,
-                        items: { type: Type.STRING },
-                      },
-                      floor_area_m2: { type: Type.NUMBER, nullable: true },
-                      total_lease_area_m2: { type: Type.NUMBER, nullable: true },
-                      price_amount: { type: Type.NUMBER, nullable: true },
-                      price_currency: { type: Type.STRING },
-                      price_period: { type: Type.STRING },
-                      price_basis: { type: Type.STRING },
-                      price_text: { type: Type.STRING, nullable: true },
-                      key_details: {
-                        type: Type.OBJECT,
-                        properties: {
-                          vi: { type: Type.STRING },
-                          en: { type: Type.STRING },
-                          zh: { type: Type.STRING },
-                        },
-                        required: ["vi", "en", "zh"],
-                      },
-                      landlord_commission_text: { type: Type.STRING, nullable: true },
-                      our_share_percent: { type: Type.NUMBER, nullable: true },
-                      our_share_text: { type: Type.STRING, nullable: true },
-                    },
-                    required: [
-                      "address_text",
-                      "property_types",
-                      "price_currency",
-                      "price_period",
-                      "price_basis",
-                      "key_details",
-                    ],
-                  },
-                },
-                needs_reply: { type: Type.BOOLEAN },
-                reply_suggestion: { type: Type.STRING, nullable: true },
+    const parsed = await executeWithKeyRotation(async (ai, apiKey, modelId) => {
+      const response = await ai.models.generateContent({
+        model: modelId,
+        contents,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              decision: {
+                type: Type.STRING,
+                description: "CONTINUATION (bổ sung cho căn trước) hoặc NEW_PROPERTY (căn BĐS mới)",
               },
-              required: ["properties", "needs_reply"],
+              properties: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    source_text_snippet: {
+                      type: Type.STRING,
+                      description: "Đoạn tin nhắn gốc nguyên văn của riêng căn BĐS này",
+                    },
+                    address_text: { type: Type.STRING },
+                    house_number: { type: Type.STRING, nullable: true },
+                    street_name: { type: Type.STRING, nullable: true },
+                    ward: { type: Type.STRING, nullable: true },
+                    district_legacy: { type: Type.STRING, nullable: true },
+                    province: { type: Type.STRING, nullable: true },
+                    property_types: {
+                      type: Type.ARRAY,
+                      items: { type: Type.STRING },
+                    },
+                    floor_area_m2: { type: Type.NUMBER, nullable: true },
+                    total_lease_area_m2: { type: Type.NUMBER, nullable: true },
+                    price_amount: { type: Type.NUMBER, nullable: true },
+                    price_currency: { type: Type.STRING },
+                    price_period: { type: Type.STRING },
+                    price_basis: { type: Type.STRING },
+                    price_text: { type: Type.STRING, nullable: true },
+                    key_details: {
+                      type: Type.OBJECT,
+                      properties: {
+                        vi: { type: Type.STRING },
+                        en: { type: Type.STRING },
+                        zh: { type: Type.STRING },
+                      },
+                      required: ["vi", "en", "zh"],
+                    },
+                    landlord_commission_text: { type: Type.STRING, nullable: true },
+                    our_share_percent: { type: Type.NUMBER, nullable: true },
+                    our_share_text: { type: Type.STRING, nullable: true },
+                  },
+                  required: [
+                    "address_text",
+                    "property_types",
+                    "price_currency",
+                    "price_period",
+                    "price_basis",
+                    "key_details",
+                  ],
+                },
+              },
+              needs_reply: { type: Type.BOOLEAN },
+              reply_suggestion: { type: Type.STRING, nullable: true },
             },
+            required: ["properties", "needs_reply"],
           },
-        });
-        if (response) break;
-      } catch (err: any) {
-        lastErr = err;
-        console.warn(`[AI Attempt ${attempt}/3] Model ${modelId} error: ${err.message}. Retrying in 2s...`);
-        if (attempt < 3) {
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-        }
+        },
+      });
+
+      if (!response || !response.text) {
+        throw new Error("Phản hồi từ Gemini API rỗng.");
       }
-    }
 
-    if (!response) {
-      throw lastErr || new Error("AI extraction failed: no response received.");
-    }
+      return JSON.parse(response.text);
+    });
 
-    const parsed = JSON.parse(response.text || "{}");
     return {
       decision: (parsed.decision === "CONTINUATION" || parsed.decision === "NEW_PROPERTY") ? parsed.decision : (hasContext ? "CONTINUATION" : "NEW_PROPERTY"),
       properties: parsed.properties || [],
