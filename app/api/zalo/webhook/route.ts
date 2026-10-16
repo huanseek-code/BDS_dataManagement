@@ -232,7 +232,7 @@ export async function POST(req: NextRequest) {
                   street_name: prop.street_name || pendingListing.street_name,
                   ward: prop.ward || pendingListing.ward,
                   district_legacy: prop.district_legacy || pendingListing.district_legacy,
-                  province: prop.province || pendingListing.province || "Hà Nội",
+                  province: prop.province || pendingListing.province || null,
                   property_types: (prop.property_types && prop.property_types.length > 0)
                     ? prop.property_types
                     : pendingListing.property_types,
@@ -247,6 +247,7 @@ export async function POST(req: NextRequest) {
                   landlord_commission_text: prop.landlord_commission_text || pendingListing.landlord_commission_text,
                   our_share_percent: prop.our_share_percent || pendingListing.our_share_percent,
                   our_share_text: prop.our_share_text || pendingListing.our_share_text,
+                  location_note: prop.source_text_snippet || pendingListing.location_note || cleanText,
                   attachments: mergedAttachments,
                   ai_extracted: prop as any,
                   needs_reply: result.needs_reply,
@@ -264,32 +265,44 @@ export async function POST(req: NextRequest) {
                   await supabaseAdmin.from("property_listings").insert({
                     submission_id: subId,
                     partner_id: partner.id,
-                  review_status: "pending",
-                  address_text: p.address_text,
-                  house_number: p.house_number,
-                  street_name: p.street_name,
-                  ward: p.ward,
-                  district_legacy: p.district_legacy,
-                  province: p.province || "Hà Nội",
-                  property_types: p.property_types || [],
-                  floor_area_m2: p.floor_area_m2,
-                  total_lease_area_m2: p.total_lease_area_m2,
-                  price_amount: p.price_amount,
-                  price_currency: p.price_currency || "VND",
-                  price_period: p.price_period || "month",
-                  price_basis: p.price_basis || "total",
-                  price_text: p.price_text,
-                  key_details: p.key_details,
-                  landlord_commission_text: p.landlord_commission_text,
-                  our_share_percent: p.our_share_percent,
-                  our_share_text: p.our_share_text,
-                  attachments: imageUrls,
-                  ai_extracted: p as any,
-                  needs_reply: result.needs_reply,
-                  change_history: [{ created_at: new Date().toISOString(), text: cleanText }],
+                    review_status: "pending",
+                    address_text: p.address_text,
+                    house_number: p.house_number,
+                    street_name: p.street_name,
+                    ward: p.ward,
+                    district_legacy: p.district_legacy,
+                    province: p.province || null,
+                    property_types: p.property_types || [],
+                    floor_area_m2: p.floor_area_m2,
+                    total_lease_area_m2: p.total_lease_area_m2,
+                    price_amount: p.price_amount,
+                    price_currency: p.price_currency || "VND",
+                    price_period: p.price_period || "month",
+                    price_basis: p.price_basis || "total",
+                    price_text: p.price_text,
+                    key_details: p.key_details,
+                    landlord_commission_text: p.landlord_commission_text,
+                    our_share_percent: p.our_share_percent,
+                    our_share_text: p.our_share_text,
+                    location_note: p.source_text_snippet || cleanText,
+                    attachments: imageUrls,
+                    ai_extracted: p as any,
+                    needs_reply: result.needs_reply,
+                    change_history: [{ created_at: new Date().toISOString(), text: p.source_text_snippet || cleanText }],
                   });
                 }
-                console.log(`[Instant Processing] Created ${result.properties.length} new listing(s)`);
+
+                // Ghi nhận vào submissions để Cron tick không chạy bóc tách trùng lặp
+                await supabaseAdmin
+                  .from("submissions")
+                  .update({
+                    ai_status: "done",
+                    ai_mode: "ai_realtime",
+                    ai_model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+                  })
+                  .eq("id", subId);
+
+                console.log(`[Instant Processing] Created ${result.properties.length} new listing(s) for submission ${subId}`);
               }
             }
           }

@@ -58,6 +58,24 @@ async function handleCronTick(req: NextRequest) {
     // 3. Xử lý các submissions vừa đóng
     if (closedSubmissions && closedSubmissions.length > 0) {
       for (const sub of closedSubmissions) {
+        // KIỂM TRA CHỐNG TRÙNG LẶP: Nếu Webhook đã tạo listing từ trước, Cron không chèn lặp lại!
+        const { count: existingListingsCount } = await supabaseAdmin
+          .from("property_listings")
+          .select("id", { count: "exact", head: true })
+          .eq("submission_id", sub.submission_id);
+
+        if (existingListingsCount && existingListingsCount > 0) {
+          await supabaseAdmin
+            .from("submissions")
+            .update({
+              status: "done",
+              ai_status: "done",
+              ai_mode: "ai_realtime_skipped_cron",
+            })
+            .eq("id", sub.submission_id);
+          continue;
+        }
+
         if (isAiEnabled && sub.raw_text && sub.raw_text.trim().length > 0) {
           try {
             // Cập nhật trạng thái đang xử lý AI
@@ -66,7 +84,7 @@ async function handleCronTick(req: NextRequest) {
               .update({ ai_status: "processing", ai_attempts: 1 })
               .eq("id", sub.submission_id);
 
-            // Bóc tách bằng Gemini 3.8 Flash
+            // Bóc tách bằng Gemini Flash
             const result = await extractPropertiesFromChat(sub.raw_text);
 
             if (result.properties.length > 0) {
@@ -80,7 +98,7 @@ async function handleCronTick(req: NextRequest) {
                   street_name: prop.street_name,
                   ward: prop.ward,
                   district_legacy: prop.district_legacy,
-                  province: prop.province || "TP. Hồ Chí Minh",
+                  province: prop.province || null,
                   property_types: prop.property_types || [],
                   floor_area_m2: prop.floor_area_m2,
                   total_lease_area_m2: prop.total_lease_area_m2,
@@ -93,8 +111,10 @@ async function handleCronTick(req: NextRequest) {
                   landlord_commission_text: prop.landlord_commission_text,
                   our_share_percent: prop.our_share_percent,
                   our_share_text: prop.our_share_text,
+                  location_note: prop.source_text_snippet || sub.raw_text,
                   ai_extracted: prop as any,
                   needs_reply: result.needs_reply,
+                  change_history: [{ created_at: new Date().toISOString(), text: prop.source_text_snippet || sub.raw_text }],
                 });
               }
             } else {
@@ -104,11 +124,13 @@ async function handleCronTick(req: NextRequest) {
                 partner_id: sub.partner_id,
                 review_status: "pending",
                 address_text: sub.raw_text.slice(0, 80),
+                location_note: sub.raw_text,
                 key_details: {
                   vi: sub.raw_text,
                   en: sub.raw_text,
                   zh: sub.raw_text,
                 },
+                change_history: [{ created_at: new Date().toISOString(), text: sub.raw_text }],
               });
             }
 
@@ -119,7 +141,7 @@ async function handleCronTick(req: NextRequest) {
                 status: "done",
                 ai_status: "done",
                 ai_mode: "ai",
-                ai_model: process.env.GEMINI_MODEL || "gemini-3.8-flash",
+                ai_model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
               })
               .eq("id", sub.submission_id);
           } catch (aiErr: any) {
@@ -130,7 +152,9 @@ async function handleCronTick(req: NextRequest) {
               partner_id: sub.partner_id,
               review_status: "pending",
               address_text: sub.raw_text.slice(0, 100),
+              location_note: sub.raw_text,
               key_details: { vi: sub.raw_text, en: sub.raw_text, zh: sub.raw_text },
+              change_history: [{ created_at: new Date().toISOString(), text: sub.raw_text }],
             });
             await supabaseAdmin
               .from("submissions")

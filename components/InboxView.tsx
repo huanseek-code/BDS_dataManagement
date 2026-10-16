@@ -32,21 +32,22 @@ export function InboxView({
     initialListings[0] || null
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showFullChat, setShowFullChat] = useState(false);
   const [formState, setFormState] = useState<any>(
     initialListings[0] ? extractFormData(initialListings[0]) : null
   );
 
   function extractFormData(listing: any) {
     return {
-      province: listing.province || "TP. Hồ Chí Minh",
+      province: listing.province || "",
       address_text: listing.address_text || "",
-      property_types: listing.property_types || ["factory"],
+      property_types: (Array.isArray(listing.property_types) && listing.property_types.length > 0) ? listing.property_types : ["townhouse"],
       total_lease_area_m2: listing.total_lease_area_m2 || "",
       floor_area_m2: listing.floor_area_m2 || "",
       price_amount: listing.price_amount || "",
-      price_currency: listing.price_currency || "USD",
+      price_currency: listing.price_currency || "VND",
       price_period: listing.price_period === "monthly" ? "month" : (listing.price_period || "month"),
-      price_basis: listing.price_basis || "per_m2",
+      price_basis: listing.price_basis || "total",
       landlord_commission_text: listing.landlord_commission_text || "",
       our_share_text: listing.our_share_text || "",
       details_vi: listing.key_details?.vi || "",
@@ -308,12 +309,66 @@ export function InboxView({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Left Column: Nguyên văn tin nhắn gốc */}
               <div className="space-y-3">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 uppercase tracking-wider">
-                  <FileText className="w-4 h-4 text-sky-600" />
-                  <span>Tin nhắn gốc từ Zalo OA</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    <FileText className="w-4 h-4 text-sky-600" />
+                    <span>Tin nhắn gốc từ Zalo OA</span>
+                  </div>
+                  {selectedListing.submission?.raw_text && (
+                    <button
+                      type="button"
+                      onClick={() => setShowFullChat(!showFullChat)}
+                      className="text-[10px] text-sky-600 hover:text-sky-800 underline font-medium cursor-pointer"
+                    >
+                      {showFullChat ? "Thu gọn (Chỉ xem căn này)" : "Xem toàn bộ phiên chat"}
+                    </button>
+                  )}
                 </div>
-                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 leading-relaxed font-mono whitespace-pre-wrap min-h-[380px] max-h-[580px] overflow-y-auto shadow-inner">
-                  {selectedListing.submission?.raw_text || "(Không có nội dung text)"}
+
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 leading-relaxed font-mono whitespace-pre-wrap min-h-[380px] max-h-[580px] overflow-y-auto shadow-inner space-y-3">
+                  {showFullChat ? (
+                    <div>
+                      <div className="text-[11px] font-bold text-slate-500 mb-2 pb-1 border-b border-slate-200">
+                        --- TOÀN BỘ CÁC TIN NHẮN TRONG PHIÊN CHAT ({selectedListing.submission?.msg_count || 1} tin) ---
+                      </div>
+                      {selectedListing.submission?.raw_text || "(Không có nội dung text)"}
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-sky-100 text-sky-700 mb-2">
+                        <span>Đoạn tin nhắn ứng với căn BĐS này</span>
+                      </div>
+                      <div className="text-slate-800">
+                        {selectedListing.ai_extracted?.source_text_snippet ||
+                          selectedListing.location_note ||
+                          selectedListing.change_history?.[0]?.text ||
+                          selectedListing.submission?.raw_text ||
+                          "(Không có nội dung text)"}
+                      </div>
+
+                      {Array.isArray(selectedListing.change_history) &&
+                        selectedListing.change_history.length > 1 && (
+                          <div className="mt-4 pt-3 border-t border-slate-200 space-y-2">
+                            <div className="text-[10px] font-bold text-amber-700 uppercase tracking-wide">
+                              Lịch sử tin nhắn bồi đắp ({selectedListing.change_history.length} tin):
+                            </div>
+                            {selectedListing.change_history.map((h: any, idx: number) => (
+                              <div
+                                key={idx}
+                                className="p-2 rounded bg-white border border-slate-200 text-[11px] text-slate-600"
+                              >
+                                <span className="text-[9px] text-slate-400 font-mono block">
+                                  {h.created_at
+                                    ? `Tin tạo: ${new Date(h.created_at).toLocaleTimeString("vi-VN")}`
+                                    : `Tin bồi đắp: ${new Date(h.appended_at).toLocaleTimeString("vi-VN")}`}
+                                </span>
+                                {h.text}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                    </div>
+                  )}
                 </div>
               </div>
 
