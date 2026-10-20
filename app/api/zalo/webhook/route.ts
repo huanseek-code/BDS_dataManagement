@@ -3,6 +3,7 @@ import { after } from "next/server";
 import crypto from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractPropertiesFromChat } from "@/lib/ai/extract";
+import { downloadAndPersistZaloImage } from "@/lib/storage/r2";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -111,9 +112,14 @@ export async function POST(req: NextRequest) {
       msgType = "image";
       textContent = message.text || null;
       if (Array.isArray(message.attachments)) {
-        imageUrls = message.attachments
+        const rawUrls = message.attachments
           .map((att: any) => att?.payload?.url || att?.url)
           .filter(Boolean);
+
+        // Lưu trữ vĩnh viễn lên Cloudflare R2 (hoặc fallback URL gốc nếu chưa có R2)
+        imageUrls = await Promise.all(
+          rawUrls.map((url: string) => downloadAndPersistZaloImage(url))
+        );
       }
     } else if (eventName === "user_send_file") {
       msgType = "file";

@@ -18,6 +18,7 @@ export interface ExtractedProperty {
   price_period: string;
   price_basis: string;
   price_text: string | null;
+  lease_term_text?: string | null;
   key_details: {
     vi: string;
     en: string;
@@ -62,14 +63,17 @@ QUY TẮC CỐT LÕI:
    - QUY TẮC CẤM SUY ĐOÁN BỪA: Nếu tin nhắn hoàn toàn không có bất kỳ dữ kiện địa danh nào xác định được tỉnh/thành phố, trả về province: null. TUYỆT ĐỐI KHÔNG tự ý gán bừa là "TP. Hồ Chí Minh" hay bất kỳ tỉnh nào.
 
 3. QUY ĐỔI GIÁ TIỀN & ĐƠN VỊ:
-   - "80 ạ", "80 tr", "80 triệu" -> price_amount: 80000000, price_currency: "VND"
-   - "16,5 triệu", "16.5tr" -> price_amount: 16500000, price_currency: "VND"
-   - "12 triệu" -> price_amount: 12000000, price_currency: "VND"
-   - "2000$", "2000 usd" -> price_amount: 2000, price_currency: "USD"
-   - "12 tỷ 5", "12.5 tỷ" -> price_amount: 12500000000, price_currency: "VND"
-   - "85000đ/m2", "85k/m2" -> price_amount: 85000, price_currency: "VND", price_basis: "per_m2"
-   - "4.5 USD/m2", "5$/m2" -> price_amount: 4.5, price_currency: "USD", price_basis: "per_m2"
-   - Luôn giữ nguyên văn ở "price_text" (ví dụ: "16,5 triệu", "2000$").
+   - "80 ạ", "80 tr", "80 triệu" -> price_amount: 80000000, price_currency: "VND", price_basis: "total", price_period: "month"
+   - "16,5 triệu", "16.5tr" -> price_amount: 16500000, price_currency: "VND", price_basis: "total", price_period: "month"
+   - "12 triệu" -> price_amount: 12000000, price_currency: "VND", price_basis: "total", price_period: "month"
+   - "2000$", "2000 usd" -> price_amount: 2000, price_currency: "USD", price_basis: "total", price_period: "month"
+   - "12 tỷ 5", "12.5 tỷ" -> price_amount: 12500000000, price_currency: "VND", price_basis: "total", price_period: "one_time"
+   - "85000đ/m2", "85k/m2" -> price_amount: 85000, price_currency: "VND", price_basis: "per_m2", price_period: "month"
+   - "4.5 USD/m2", "5$/m2" -> price_amount: 4.5, price_currency: "USD", price_basis: "per_m2", price_period: "month"
+   - Luôn sao chép NGUYÊN VĂN chuỗi giá vào "price_text" (ví dụ: "85k/m2", "16,5 triệu", "2000$").
+   - PHÂN BIỆT CƠ SỞ TÍNH GIÁ (price_basis):
+     * Nhà ở, căn hộ, biệt thự, nhà phố: điền price_basis: "total".
+     * Kho bãi, nhà xưởng, đất, văn phòng cho thuê theo mét vuông: BẮT BUỘC điền price_basis: "per_m2".
 
 4. LOẠI HÌNH (property_types): Chọn từ danh sách: ["factory", "warehouse", "office", "retail", "townhouse", "villa", "apartment", "land", "hotel", "other"].
    - Nhà mặt phố / nhà nguyên căn -> ["townhouse"]
@@ -77,16 +81,27 @@ QUY TẮC CỐT LÕI:
    - Kho / xưởng -> ["warehouse", "factory"]
    - Mặt bằng kinh doanh / văn phòng -> ["retail", "office"]
 
-5. CHI TIẾT CHÍNH (key_details):
-   - Tóm tắt kết cấu (số tầng, số phòng ngủ, thang máy, phòng đọc sách...), hiện trạng nội thất, tiện ích...
+5. NGUYÊN TẮC BẢO TOÀN DỮ LIỆU GỐC & CẤM PHỎNG ĐOÁN BỪA (STRICT FIDELITY):
+   - ĐIỀU KHOẢN HỢP ĐỒNG (lease_term_text):
+     * Nếu tin nhắn ghi "hợp đồng 1 năm" hay "hđ 1 năm", ghi CHÍNH XÁC là "Hợp đồng 1 năm" (Contract: 1 year / 租期: 1年).
+     * TUYỆT ĐỐI CẤM tự ý thêm chữ "tối thiểu", "ít nhất", "từ 1 năm trở lên" nếu tin nhắn gốc không có chữ "tối thiểu".
+   - ĐỊA CHỈ & VỊ TRÍ (address_text):
+     * Giữ nguyên văn các cụm từ địa danh trong tin nhắn gốc (ví dụ: "Ciputra L7, Tây Hồ", "ngõ 12 Vĩnh Hưng").
+     * KHÔNG tự ý suy đoán thêm số nhà, tên ngõ hoặc phường xã nếu không được nhắc đến.
+   - DIỆN TÍCH (floor_area_m2, total_lease_area_m2):
+     * Giữ chính xác từng mét vuông số lẻ (ví dụ: 213m2 là 213, không được làm tròn thành 210 hay 215).
+
+6. CHI TIẾT CHÍNH (key_details):
+   - Tóm tắt trung thực kết cấu (số tầng, số phòng ngủ, thang máy, công năng...) có thật từ tin nhắn.
+   - TUYỆT ĐỐI KHÔNG tự ý thêm các điều khoản mặc định (như cọc 1 thanh toán 3 hay hợp đồng tối thiểu) nếu tin nhắn không nói tới.
    - Tự động viết bằng 3 ngôn ngữ chuẩn chỉnh: vi (Tiếng Việt), en (English), zh (中文).
 
-6. CHU KỲ GIÁ (price_period): Chỉ chọn "month", "year", hoặc "one_time".
+7. CHU KỲ GIÁ (price_period): Chỉ chọn "month", "year", hoặc "one_time".
 
 ${
   hasContext
     ? `
-7. PHÁN ĐOÁN NGỮ NGHĨA KHI CÓ HỒ SƠ ĐANG CHỜ DUYỆT TRƯỚC ĐÓ:
+8. PHÁN ĐOÁN NGỮ NGHĨA KHI CÓ HỒ SƠ ĐANG CHỜ DUYỆT TRƯỚC ĐÓ:
    - Trường "decision":
      + Điền "CONTINUATION" KHI VÀ CHỈ KHI: Tin nhắn mới là câu nói tiếp / bổ sung / đính chính thông tin (giá tiền, diện tích, hoa hồng, ảnh chụp, liên hệ, hoặc giảm giá: "chủ bớt còn 11tr") cho CĂN BĐS ĐANG ĐƯỢC NÓI TỚI ở tin trước. HỢP NHẤT TOÀN BỘ thông tin cũ và mới lại thành 1 căn DUY NHẤT hoàn chỉnh.
      + Điền "NEW_PROPERTY" KHI:
@@ -94,7 +109,7 @@ ${
        * Hoặc nhắc đến một địa chỉ / tên tòa nhà / vị trí hoàn toàn khác biệt với căn đang chờ duyệt trước đó.
 `
     : `
-7. Trường "decision": Mặc định điền "NEW_PROPERTY".
+8. Trường "decision": Mặc định điền "NEW_PROPERTY".
 `
 }
 `;
@@ -163,6 +178,7 @@ ${rawText}`;
                     price_period: { type: Type.STRING },
                     price_basis: { type: Type.STRING },
                     price_text: { type: Type.STRING, nullable: true },
+                    lease_term_text: { type: Type.STRING, nullable: true },
                     key_details: {
                       type: Type.OBJECT,
                       properties: {

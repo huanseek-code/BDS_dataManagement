@@ -105,14 +105,15 @@ export function getKeyPoolStatus() {
  */
 export const GEMINI_3X_MODELS = Array.from(
   new Set([
-    process.env.GEMINI_MODEL || "gemini-flash-latest",
-    "gemini-3.8-flash",
-    "gemini-3.7-flash",
+    process.env.GEMINI_MODEL || "gemini-flash-lite-latest",
+    "gemini-flash-lite-latest",
+    "gemini-3.5-flash-lite",
     "gemini-3.6-flash",
     "gemini-3.5-flash",
-    "gemini-3.5-flash-lite",
-    "gemini-flash-lite-latest",
     "gemini-3.1-flash-lite",
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-flash-latest",
   ])
 ).filter(Boolean);
 
@@ -163,7 +164,13 @@ export async function executeWithKeyRotation<T>(
     // Thử qua chuỗi Model Gemini 3.x
     for (const modelToTry of GEMINI_3X_MODELS) {
       try {
-        const result = await action(ai, selectedKey, modelToTry);
+        // Bảo vệ timeout 15s để không bị treo nếu một model gặp nghẽn mạng từ Google
+        const result = (await Promise.race([
+          action(ai, selectedKey, modelToTry),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("GATEWAY_TIMEOUT_15S")), 15000)
+          ),
+        ])) as T;
 
         // Thành công: ghi nhận trạng thái tích cực
         health.status = "active";

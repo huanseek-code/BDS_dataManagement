@@ -148,7 +148,7 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
               onChange={(e) => setShowBilingual(e.target.checked)}
               className="rounded text-sky-600 focus:ring-sky-500"
             />
-            <span>Tiêu đề song ngữ (中文 / Tiếng Việt)</span>
+            <span>{t("common.showBilingualLabel")}</span>
           </label>
 
           <a
@@ -249,7 +249,7 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
 
                       {/* 6. Giá chào */}
                       <td className="p-3 font-semibold text-emerald-700">
-                        <div>{formatPrice(row.price_amount ?? null, row.price_currency, locale)}</div>
+                        <div>{formatPrice(row.price_amount ?? null, row.price_currency, locale, row.price_basis, row.price_period)}</div>
                         {row.price_text && (
                           <div className="text-[11px] text-slate-500 font-normal">
                             {row.price_text}

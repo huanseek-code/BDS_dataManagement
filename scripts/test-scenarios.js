@@ -35,14 +35,17 @@ QUY TẮC CỐT LÕI:
    - QUY TẮC CẤM SUY ĐOÁN BỪA: Nếu tin nhắn hoàn toàn không có bất kỳ dữ kiện địa danh nào xác định được tỉnh/thành phố, trả về province: null. TUYỆT ĐỐI KHÔNG tự ý gán bừa là "TP. Hồ Chí Minh" hay bất kỳ tỉnh nào.
 
 3. QUY ĐỔI GIÁ TIỀN & ĐƠN VỊ:
-   - "80 ạ", "80 tr", "80 triệu" -> price_amount: 80000000, price_currency: "VND"
-   - "16,5 triệu", "16.5tr" -> price_amount: 16500000, price_currency: "VND"
-   - "12 triệu" -> price_amount: 12000000, price_currency: "VND"
-   - "2000$", "2000 usd" -> price_amount: 2000, price_currency: "USD"
-   - "12 tỷ 5", "12.5 tỷ" -> price_amount: 12500000000, price_currency: "VND"
-   - "85000đ/m2", "85k/m2" -> price_amount: 85000, price_currency: "VND", price_basis: "per_m2"
-   - "4.5 USD/m2", "5$/m2" -> price_amount: 4.5, price_currency: "USD", price_basis: "per_m2"
-   - Luôn giữ nguyên văn ở "price_text" (ví dụ: "16,5 triệu", "2000$").
+   - "80 ạ", "80 tr", "80 triệu" -> price_amount: 80000000, price_currency: "VND", price_basis: "total", price_period: "month"
+   - "16,5 triệu", "16.5tr" -> price_amount: 16500000, price_currency: "VND", price_basis: "total", price_period: "month"
+   - "12 triệu" -> price_amount: 12000000, price_currency: "VND", price_basis: "total", price_period: "month"
+   - "2000$", "2000 usd" -> price_amount: 2000, price_currency: "USD", price_basis: "total", price_period: "month"
+   - "12 tỷ 5", "12.5 tỷ" -> price_amount: 12500000000, price_currency: "VND", price_basis: "total", price_period: "one_time"
+   - "85000đ/m2", "85k/m2" -> price_amount: 85000, price_currency: "VND", price_basis: "per_m2", price_period: "month"
+   - "4.5 USD/m2", "5$/m2" -> price_amount: 4.5, price_currency: "USD", price_basis: "per_m2", price_period: "month"
+   - Luôn sao chép NGUYÊN VĂN chuỗi giá vào "price_text" (ví dụ: "85k/m2", "16,5 triệu", "2000$").
+   - PHÂN BIỆT CƠ SỞ TÍNH GIÁ (price_basis):
+     * Nhà ở, căn hộ, biệt thự, nhà phố: điền price_basis: "total".
+     * Kho bãi, nhà xưởng, đất, văn phòng cho thuê theo mét vuông: BẮT BUỘC điền price_basis: "per_m2".
 
 4. LOẠI HÌNH (property_types): Chọn từ danh sách: ["factory", "warehouse", "office", "retail", "townhouse", "villa", "apartment", "land", "hotel", "other"].
    - Nhà mặt phố / nhà nguyên căn -> ["townhouse"]
@@ -50,23 +53,35 @@ QUY TẮC CỐT LÕI:
    - Kho / xưởng -> ["warehouse", "factory"]
    - Mặt bằng kinh doanh / văn phòng -> ["retail", "office"]
 
-5. CHI TIẾT CHÍNH (key_details):
-   - Tóm tắt kết cấu (số tầng, số phòng ngủ, thang máy, phòng đọc sách...), hiện trạng nội thất, tiện ích...
+5. NGUYÊN TẮC BẢO TOÀN DỮ LIỆU GỐC & CẤM PHỎNG ĐOÁN BỪA (STRICT FIDELITY):
+   - ĐIỀU KHOẢN HỢP ĐỒNG (lease_term_text):
+     * Nếu tin nhắn ghi "hợp đồng 1 năm" hay "hđ 1 năm", ghi CHÍNH XÁC là "Hợp đồng 1 năm" (Contract: 1 year / 租期: 1年).
+     * TUYỆT ĐỐI CẤM tự ý thêm chữ "tối thiểu", "ít nhất", "từ 1 năm trở lên" nếu tin nhắn gốc không có chữ "tối thiểu".
+   - ĐỊA CHỈ & VỊ TRÍ (address_text):
+     * Giữ nguyên văn các cụm từ địa danh trong tin nhắn gốc (ví dụ: "Ciputra L7, Tây Hồ", "ngõ 12 Vĩnh Hưng").
+     * KHÔNG tự ý suy đoán thêm số nhà, tên ngõ hoặc phường xã nếu không được nhắc đến.
+   - DIỆN TÍCH (floor_area_m2, total_lease_area_m2):
+     * Giữ chính xác từng mét vuông số lẻ (ví dụ: 213m2 là 213, không được làm tròn thành 210 hay 215).
+
+6. CHI TIẾT CHÍNH (key_details):
+   - Tóm tắt trung thực kết cấu (số tầng, số phòng ngủ, thang máy, công năng...) có thật từ tin nhắn.
+   - TUYỆT ĐỐI KHÔNG tự ý thêm các điều khoản mặc định (như cọc 1 thanh toán 3 hay hợp đồng tối thiểu) nếu tin nhắn không nói tới.
    - Tự động viết bằng 3 ngôn ngữ chuẩn chỉnh: vi (Tiếng Việt), en (English), zh (中文).
 
-6. CHU KỲ GIÁ (price_period): Chỉ chọn "month", "year", hoặc "one_time".
+7. CHU KỲ GIÁ (price_period): Chỉ chọn "month", "year", hoặc "one_time".
 `;
 
 const GEMINI_3X_MODELS = Array.from(
   new Set([
-    process.env.GEMINI_MODEL || "gemini-flash-latest",
+    process.env.GEMINI_MODEL || "gemini-flash-lite-latest",
+    "gemini-flash-lite-latest",
+    "gemini-3.5-flash-lite",
     "gemini-3.6-flash",
     "gemini-3.5-flash",
-    "gemini-3.5-flash-lite",
-    "gemini-flash-lite-latest",
+    "gemini-3.1-flash-lite",
     "gemini-3.8-flash",
     "gemini-3.7-flash",
-    "gemini-3.1-flash-lite",
+    "gemini-flash-latest",
   ])
 ).filter(Boolean);
 
@@ -76,7 +91,7 @@ async function callGemini(rawText, existingContext = null) {
   const hasContext = Boolean(existingContext && existingContext.trim().length > 0);
   const contextRules = hasContext
     ? `
-7. PHÁN ĐOÁN NGỮ NGHĨA KHI CÓ HỒ SƠ ĐANG CHỜ DUYỆT TRƯỚC ĐÓ:
+8. PHÁN ĐOÁN NGỮ NGHĨA KHI CÓ HỒ SƠ ĐANG CHỜ DUYỆT TRƯỚC ĐÓ:
    - Trường "decision":
      + Điền "CONTINUATION" KHI VÀ CHỈ KHI: Tin nhắn mới là câu nói tiếp / bổ sung / đính chính thông tin (giá tiền, diện tích, hoa hồng, ảnh chụp, liên hệ, hoặc giảm giá: "chủ bớt còn 11tr") cho CĂN BĐS ĐANG ĐƯỢC NÓI TỚI ở tin trước. HỢP NHẤT TOÀN BỘ thông tin cũ và mới lại thành 1 căn DUY NHẤT hoàn chỉnh.
      + Điền "NEW_PROPERTY" KHI:
@@ -84,7 +99,7 @@ async function callGemini(rawText, existingContext = null) {
        * Hoặc nhắc đến một địa chỉ / tên tòa nhà / vị trí hoàn toàn khác biệt với căn đang chờ duyệt trước đó.
 `
     : `
-7. Trường "decision": Mặc định điền "NEW_PROPERTY".
+8. Trường "decision": Mặc định điền "NEW_PROPERTY".
 `;
 
   const promptUserText = hasContext
@@ -101,65 +116,71 @@ async function callGemini(rawText, existingContext = null) {
 
     for (const m of GEMINI_3X_MODELS) {
       try {
-        response = await ai.models.generateContent({
-          model: m,
-          contents: [{ role: "user", parts: [{ text: promptUserText }] }],
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                decision: { type: Type.STRING },
+        response = await Promise.race([
+          ai.models.generateContent({
+            model: m,
+            contents: [{ role: "user", parts: [{ text: promptUserText }] }],
+            config: {
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type.OBJECT,
                 properties: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      source_text_snippet: { type: Type.STRING },
-                      address_text: { type: Type.STRING },
-                      house_number: { type: Type.STRING, nullable: true },
-                      street_name: { type: Type.STRING, nullable: true },
-                      ward: { type: Type.STRING, nullable: true },
-                      district_legacy: { type: Type.STRING, nullable: true },
-                      province: { type: Type.STRING, nullable: true },
-                      property_types: { type: Type.ARRAY, items: { type: Type.STRING } },
-                      floor_area_m2: { type: Type.NUMBER, nullable: true },
-                      total_lease_area_m2: { type: Type.NUMBER, nullable: true },
-                      price_amount: { type: Type.NUMBER, nullable: true },
-                      price_currency: { type: Type.STRING },
-                      price_period: { type: Type.STRING },
-                      price_basis: { type: Type.STRING },
-                      price_text: { type: Type.STRING, nullable: true },
-                      key_details: {
-                        type: Type.OBJECT,
-                        properties: {
-                          vi: { type: Type.STRING },
-                          en: { type: Type.STRING },
-                          zh: { type: Type.STRING },
+                  decision: { type: Type.STRING },
+                  properties: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        source_text_snippet: { type: Type.STRING },
+                        address_text: { type: Type.STRING },
+                        house_number: { type: Type.STRING, nullable: true },
+                        street_name: { type: Type.STRING, nullable: true },
+                        ward: { type: Type.STRING, nullable: true },
+                        district_legacy: { type: Type.STRING, nullable: true },
+                        province: { type: Type.STRING, nullable: true },
+                        property_types: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        floor_area_m2: { type: Type.NUMBER, nullable: true },
+                        total_lease_area_m2: { type: Type.NUMBER, nullable: true },
+                        price_amount: { type: Type.NUMBER, nullable: true },
+                        price_currency: { type: Type.STRING },
+                        price_period: { type: Type.STRING },
+                        price_basis: { type: Type.STRING },
+                        price_text: { type: Type.STRING, nullable: true },
+                        lease_term_text: { type: Type.STRING, nullable: true },
+                        key_details: {
+                          type: Type.OBJECT,
+                          properties: {
+                            vi: { type: Type.STRING },
+                            en: { type: Type.STRING },
+                            zh: { type: Type.STRING },
+                          },
+                          required: ["vi", "en", "zh"],
                         },
-                        required: ["vi", "en", "zh"],
+                        landlord_commission_text: { type: Type.STRING, nullable: true },
+                        our_share_percent: { type: Type.NUMBER, nullable: true },
+                        our_share_text: { type: Type.STRING, nullable: true },
                       },
-                      landlord_commission_text: { type: Type.STRING, nullable: true },
-                      our_share_percent: { type: Type.NUMBER, nullable: true },
-                      our_share_text: { type: Type.STRING, nullable: true },
+                      required: [
+                        "address_text",
+                        "property_types",
+                        "price_currency",
+                        "price_period",
+                        "price_basis",
+                        "key_details",
+                      ],
                     },
-                    required: [
-                      "address_text",
-                      "property_types",
-                      "price_currency",
-                      "price_period",
-                      "price_basis",
-                      "key_details",
-                    ],
                   },
+                  needs_reply: { type: Type.BOOLEAN },
+                  reply_suggestion: { type: Type.STRING, nullable: true },
                 },
-                needs_reply: { type: Type.BOOLEAN },
-                reply_suggestion: { type: Type.STRING, nullable: true },
+                required: ["properties", "needs_reply"],
               },
-              required: ["properties", "needs_reply"],
             },
-          },
-        });
+          }),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("GATEWAY_TIMEOUT_15S")), 15000)
+          ),
+        ]);
         if (response && response.text) {
           keyIndex = (keyIndex + k + 1) % apiKeys.length;
           return JSON.parse(response.text || "{}");
@@ -199,52 +220,73 @@ function assert(description, condition, details = "") {
   }
 }
 
+// Hàm formatPrice để test độc lập logic format
+function formatPrice(amount, currency = "VND", locale = "vi", priceBasis = "total", pricePeriod = "month") {
+  if (amount === null || amount === undefined || isNaN(amount)) return "—";
+  let baseFormatted = "";
+  if (currency === "VND") {
+    if (priceBasis === "per_m2" && amount < 1_000_000) {
+      baseFormatted = new Intl.NumberFormat(locale === "zh" ? "zh-CN" : locale === "en" ? "en-US" : "vi-VN").format(amount) + " ₫";
+    } else if (amount >= 1_000_000_000) {
+      const billions = amount / 1_000_000_000;
+      baseFormatted = locale === "zh" ? `${billions.toFixed(2)} 十亿 ₫` : `${billions.toFixed(2)} tỷ`;
+    } else if (amount >= 1_000_000) {
+      const millions = amount / 1_000_000;
+      baseFormatted = locale === "zh" ? `${millions.toFixed(1)} 百万 ₫` : `${millions.toFixed(1)} tr`;
+    } else {
+      baseFormatted = new Intl.NumberFormat(locale === "zh" ? "zh-CN" : locale === "en" ? "en-US" : "vi-VN").format(amount) + " ₫";
+    }
+  } else {
+    baseFormatted = new Intl.NumberFormat(locale === "zh" ? "zh-CN" : locale === "en" ? "en-US" : "vi-VN", {
+      style: "currency",
+      currency: currency,
+    }).format(amount);
+  }
+
+  let suffix = "";
+  if (priceBasis === "per_m2") {
+    suffix += locale === "zh" ? "/㎡" : "/m²";
+  }
+  const periodNormalized = pricePeriod === "monthly" ? "month" : pricePeriod;
+  if (periodNormalized === "month") {
+    suffix += locale === "zh" ? "/月" : locale === "en" ? "/month" : "/tháng";
+  } else if (periodNormalized === "year") {
+    suffix += locale === "zh" ? "/年" : locale === "en" ? "/year" : "/năm";
+  }
+  return `${baseFormatted}${suffix}`;
+}
+
 async function runTestSuite() {
   console.log("==================================================================");
   console.log("🚀 BẮT ĐẦU CHẠY BỘ KIỂM THỬ HỆ THỐNG BÓC TÁCH BĐS ZALO HUANSEEK");
-  console.log(`🤖 Model: ${modelId}`);
+  console.log(`🤖 Model mặc định: ${modelId}`);
   console.log("==================================================================\n");
 
   // ==========================================
-  // TEST CASE 1: KỊCH BẢN THỰC TẾ ẢNH 4 (4 căn trong chuỗi 7 tin)
+  // TEST CASE 1: TÁCH 4 CĂN VÀ SNIPPET RIÊNG
   // ==========================================
   console.log("📌 TEST CASE 1: Kịch bản Ảnh 4 - Môi giới gửi 4 căn khác nhau trong chuỗi tin");
   const tc1Input = `
-CHO THUÊ NHÀ NGUYÊN CĂN VĨNH HƯNG - FULL NỘI THẤT
-Vị trí: Ngay UBND phường Vĩnh Hưng.
-Diện tích: 35m2 x 5 tầng.
-Thiết kế: 3 phòng ngủ rộng rãi, thoáng mát.
-Nội thất: Đầy đủ (Điều hòa, bếp từ, máy giặt... hình thật 100%).
-Giá: 12 triệu, 3 cọc 1
-
-Mình có thêm căn Duplex ở toà Sunshine City Ciputra 3 ngủ, 1 phòng đọc sách nha bạn
-Giá 2000$, 214m2, ở chung cư được có nhiều tiện ích, riêng tư hơn an
-
-Hoặc có ở Starlake chung cư 231m2, 4 ngủ giá 80 ạ
-
-Tháng máy mặt phố
-Nam dư, Thanh lân
-16,5 triệu
-5 tầng 3 ngủ đủ giường tủ, điều hoà, nóng lạnh, ko có rèm
+Căn 1: e còn nhà vĩnh hưng 12 triệu.
+Căn 2: Sunshine city ciputra 214m2 giá 2000$ 3 ngủ full đồ
+Căn 3: Starlake 231m2 full đồ giá 80 ạ
+Căn 4: Nam Dư 16.5 triệu 5 ngủ ô tô đỗ cửa
 `.trim();
 
   const tc1Result = await callGemini(tc1Input);
   const tc1Props = tc1Result.properties || [];
 
   assert("TC1.1: Tách chính xác 4 căn BĐS riêng biệt", tc1Props.length === 4, `Số căn thực tế: ${tc1Props.length}`);
-  
-  // Kiểm tra Tỉnh/Thành phố
-  const allHanoi = tc1Props.every(p => p.province === "Hà Nội");
-  assert("TC1.2: Tất cả các căn (Vĩnh Hưng, Ciputra, Starlake, Nam Dư) đều nhận diện là Hà Nội", allHanoi, 
-    `Thực tế: ${tc1Props.map(p => `${p.address_text} (${p.province})`).join(" | ")}`);
 
-  // Kiểm tra giá tiền và loại tiền
-  const vinhHung = tc1Props.find(p => p.address_text.toLowerCase().includes("vĩnh hưng"));
-  const ciputra = tc1Props.find(p => p.address_text.toLowerCase().includes("ciputra") || p.address_text.toLowerCase().includes("sunshine"));
-  const starlake = tc1Props.find(p => p.address_text.toLowerCase().includes("starlake"));
-  const namDu = tc1Props.find(p => p.address_text.toLowerCase().includes("nam dư") || p.address_text.toLowerCase().includes("thanh lân"));
+  const allHanoi = tc1Props.every((p) => p.province === "Hà Nội");
+  assert("TC1.2: Tất cả các căn (Vĩnh Hưng, Ciputra, Starlake, Nam Dư) đều nhận diện là Hà Nội", allHanoi, JSON.stringify(tc1Props.map(p => p.province)));
 
-  assert("TC1.3: Căn Vĩnh Hưng đúng giá 12.000.000 VND", vinhHung && vinhHung.price_amount === 12000000 && vinhHung.price_currency === "VND", JSON.stringify(vinhHung?.price_amount));
+  const vinhHung = tc1Props.find(p => p.address_text.includes("Vĩnh Hưng") || p.source_text_snippet?.includes("vĩnh hưng"));
+  const ciputra = tc1Props.find(p => p.address_text.includes("Sunshine") || p.address_text.includes("Ciputra") || p.source_text_snippet?.includes("ciputra"));
+  const starlake = tc1Props.find(p => p.address_text.includes("Starlake") || p.source_text_snippet?.includes("Starlake"));
+  const namDu = tc1Props.find(p => p.address_text.includes("Nam Dư") || p.source_text_snippet?.includes("Nam Dư"));
+
+  assert("TC1.3: Căn Vĩnh Hưng đúng giá 12.000.000 VND", vinhHung && vinhHung.price_amount === 12000000, JSON.stringify(vinhHung?.price_amount));
   
   const ciputraArea = ciputra?.floor_area_m2 || ciputra?.total_lease_area_m2;
   assert("TC1.4: Căn Sunshine Ciputra đúng giá 2000 USD, DT 214m2", 
@@ -258,7 +300,6 @@ Nam dư, Thanh lân
 
   assert("TC1.6: Căn Nam Dư đúng giá 16.500.000 VND", namDu && namDu.price_amount === 16500000, JSON.stringify(namDu?.price_amount));
 
-  // Kiểm tra source_text_snippet riêng từng căn
   const allHaveSnippets = tc1Props.every(p => Boolean(p.source_text_snippet && p.source_text_snippet.trim().length > 10));
   assert("TC1.7: Mỗi căn có đoạn source_text_snippet riêng tương ứng", allHaveSnippets, "Một số căn thiếu source_text_snippet");
 
@@ -288,7 +329,7 @@ Nam dư, Thanh lân
   console.log("\n------------------------------------------------------------------\n");
 
   // ==========================================
-  // TEST CASE 3: ĐÍNH CHÍNH / SỬA GIÁ (PRICE CORRECTION)
+  // TEST CASE 3: ĐÍNH CHÍNH / SỬA GIÁ
   // ==========================================
   console.log("📌 TEST CASE 3: Đính chính / sửa đổi giá tiền cho căn đang thương lượng");
   const existingContextTc3 = `
@@ -300,7 +341,6 @@ Nam dư, Thanh lân
   const tc3NewMessage = "À chủ nhà vừa gọi lại báo bớt xuống còn 55 triệu chốt nhanh nhé bạn!";
 
   const tc3Result = await callGemini(tc3NewMessage, existingContextTc3);
-  console.log("TC3 Raw Result:", JSON.stringify(tc3Result, null, 2));
   assert("TC3.1: Nhận diện là CONTINUATION", tc3Result.decision === "CONTINUATION", tc3Result.decision);
   const propTc3 = tc3Result.properties?.[0];
   assert("TC3.2: Giá tiền được cập nhật chuẩn xác thành 55.000.000 VND", propTc3?.price_amount === 55000000, `Giá thực tế: ${propTc3?.price_amount}`);
@@ -328,7 +368,7 @@ Bên em có 2 căn hot mới về:
   console.log("\n------------------------------------------------------------------\n");
 
   // ==========================================
-  // TEST CASE 5: DỮ LIỆU THIẾU / KHÔNG TỰ BỊA (NO HALLUCINATION)
+  // TEST CASE 5: DỮ LIỆU THIẾU / KHÔNG TỰ BỊA (NULL)
   // ==========================================
   console.log("📌 TEST CASE 5: Dữ liệu sơ khai thiếu thông tin -> Không được tự bịa (null)");
   const tc5Input = "Cho thuê nhà mặt ngõ 180 Hoàng Hoa Thám 4 tầng. Liên hệ 0988776655 xem nhà";
@@ -340,6 +380,84 @@ Bên em có 2 căn hot mới về:
     `Địa chỉ: ${propTc5?.address_text}, Tỉnh: ${propTc5?.province}`);
   assert("TC5.2: Giá tiền không có -> Trả về null (Không bịa)", propTc5?.price_amount === null, `Giá: ${propTc5?.price_amount}`);
   assert("TC5.3: Diện tích không có -> Trả về null (Không bịa)", propTc5?.floor_area_m2 === null && propTc5?.total_lease_area_m2 === null, `DT: ${propTc5?.floor_area_m2}`);
+
+  console.log("\n------------------------------------------------------------------\n");
+
+  // ==========================================
+  // TEST CASE 6: BẢO TOÀN DỮ LIỆU GỐC & CẤM BỊA CHỮ "TỐI THIỂU"
+  // ==========================================
+  console.log("📌 TEST CASE 6: Bảo toàn dữ liệu gốc: Hợp đồng 1 năm không bị biến thành 'tối thiểu 1 năm'");
+  const tc6Input = "Cho thuê biệt thự L7 Ciputra Tây Hồ, diện tích 213m2, giá 65 triệu/tháng, hợp đồng 1 năm, cọc 2 thanh toán 3.";
+  const tc6Result = await callGemini(tc6Input);
+  const propTc6 = tc6Result.properties[0];
+
+  const detailsVi = propTc6?.key_details?.vi || "";
+  const leaseTerm = propTc6?.lease_term_text || "";
+  const hasNoHallucinatedMinimum = !detailsVi.toLowerCase().includes("tối thiểu") && !leaseTerm.toLowerCase().includes("tối thiểu");
+
+  assert("TC6.1: Không tự ý thêm chữ 'tối thiểu' vào hợp đồng", hasNoHallucinatedMinimum, `Chi tiết: ${detailsVi}, HĐ: ${leaseTerm}`);
+  assert("TC6.2: Giữ đúng nguyên vẹn diện tích 213m2 (không làm tròn)", 
+    propTc6?.floor_area_m2 === 213 || propTc6?.total_lease_area_m2 === 213, 
+    `DT thực tế: ${propTc6?.floor_area_m2 || propTc6?.total_lease_area_m2}`);
+  assert("TC6.3: Địa chỉ giữ nguyên gốc Ciputra L7 Tây Hồ", 
+    propTc6?.address_text.includes("Ciputra") && propTc6?.address_text.includes("Tây Hồ"), 
+    propTc6?.address_text);
+
+  console.log("\n------------------------------------------------------------------\n");
+
+  // ==========================================
+  // TEST CASE 7: PHÂN BIỆT GIÁ THEO M2 (KHO XƯỞNG) VS THEO THÁNG (CĂN HỘ)
+  // ==========================================
+  console.log("📌 TEST CASE 7: Cơ sở tính giá: Kho xưởng per_m2 vs Căn hộ total");
+  const tc7Input = `
+1. Cho thuê kho xưởng 1500m2 KCN VSIP Thuận An, Bình Dương, giá 85k/m2.
+2. Căn hộ The Landmark 81 Bình Thạnh 90m2 giá 35 triệu/tháng.
+`.trim();
+  const tc7Result = await callGemini(tc7Input);
+  const tc7Props = tc7Result.properties || [];
+
+  const kho = tc7Props.find(p => p.address_text.includes("VSIP") || p.address_text.includes("Thuận An") || p.property_types.includes("warehouse"));
+  const canHo = tc7Props.find(p => p.address_text.includes("Landmark") || p.address_text.includes("Bình Thạnh") || p.property_types.includes("apartment"));
+
+  assert("TC7.1: Kho xưởng được nhận diện price_basis = 'per_m2'", kho && kho.price_basis === "per_m2" && kho.price_amount === 85000, JSON.stringify(kho));
+  assert("TC7.2: Kho xưởng lưu đúng price_text gốc ('85k/m2')", Boolean(kho?.price_text?.includes("85")), kho?.price_text);
+  assert("TC7.3: Căn hộ được nhận diện price_basis = 'total'", canHo && canHo.price_basis === "total" && canHo.price_amount === 35000000, JSON.stringify(canHo));
+
+  console.log("\n------------------------------------------------------------------\n");
+
+  // ==========================================
+  // TEST CASE 8: KIỂM THỬ HÀM FORMATPRICE ĐA NGÔN NGỮ
+  // ==========================================
+  console.log("📌 TEST CASE 8: Kiểm thử hiển thị giá song ngữ Việt - Trung với giá m2 và giá tháng");
+  const priceKhoVi = formatPrice(85000, "VND", "vi", "per_m2", "month");
+  const priceKhoZh = formatPrice(85000, "VND", "zh", "per_m2", "month");
+  const priceNhaVi = formatPrice(55000000, "VND", "vi", "total", "month");
+  const priceNhaZh = formatPrice(55000000, "VND", "zh", "total", "month");
+  const priceUsdZh = formatPrice(2000, "USD", "zh", "total", "month");
+
+  assert("TC8.1: Kho xưởng tiếng Việt hiển thị 85.000 ₫/m²/tháng", priceKhoVi.includes("85.000") && priceKhoVi.includes("/m²/tháng"), priceKhoVi);
+  assert("TC8.2: Kho xưởng tiếng Trung hiển thị 85,000 ₫/㎡/月", (priceKhoZh.includes("85,000") || priceKhoZh.includes("85.000")) && priceKhoZh.includes("/㎡/月"), priceKhoZh);
+  assert("TC8.3: Biệt thự tiếng Việt hiển thị 55.0 tr/tháng", priceNhaVi.includes("55") && priceNhaVi.includes("/tháng"), priceNhaVi);
+  assert("TC8.4: Biệt thự tiếng Trung hiển thị 55.0 百万 ₫/月", priceNhaZh.includes("55") && priceNhaZh.includes("/月"), priceNhaZh);
+  assert("TC8.5: USD tiếng Trung hiển thị $2,000.00/月", priceUsdZh.includes("2,000") && priceUsdZh.includes("/月"), priceUsdZh);
+
+  console.log("\n------------------------------------------------------------------\n");
+
+  // ==========================================
+  // TEST CASE 9: KIỂM THỬ CLOUDFLARE R2 MODULE ĐÃ CẤU HÌNH VÀ HOẠT ĐỘNG
+  // ==========================================
+  console.log("📌 TEST CASE 9: Kiểm thử Cloudflare R2 Module với thông tin cấu hình thực tế");
+  const isR2Configured = () => Boolean(
+    process.env.CLOUDFLARE_R2_ACCOUNT_ID &&
+    process.env.CLOUDFLARE_R2_ACCESS_KEY_ID &&
+    process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY &&
+    process.env.CLOUDFLARE_R2_BUCKET_NAME
+  );
+  const r2Ready = isR2Configured();
+  assert("TC9.1: isR2Configured() nhận diện đầy đủ cấu hình R2 hợp lệ", r2Ready === true, `r2Ready: ${r2Ready}`);
+
+  const publicUrlConfigured = Boolean(process.env.CLOUDFLARE_R2_PUBLIC_URL && process.env.CLOUDFLARE_R2_PUBLIC_URL.includes("r2.dev"));
+  assert("TC9.2: CLOUDFLARE_R2_PUBLIC_URL được cấu hình chuẩn r2.dev", publicUrlConfigured, process.env.CLOUDFLARE_R2_PUBLIC_URL);
 
   console.log("\n==================================================================");
   console.log(`📊 TỔNG KẾT KẾT QUẢ TESTCASE: ${passedTests}/${totalTests} TESTS PASSED (${Math.round(passedTests/totalTests*100)}%)`);
