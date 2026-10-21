@@ -1,9 +1,11 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PropertyTable, PropertyRow } from "@/components/PropertyTable";
+import { getTranslations } from "next-intl/server";
 
 export const dynamic = "force-dynamic";
 
 export default async function PropertiesPage() {
+  const t = await getTranslations("properties");
   const supabase = createAdminClient();
 
   // Query properties from Supabase
@@ -186,16 +188,16 @@ export default async function PropertiesPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1">
         <div>
           <h1 className="text-xl font-bold tracking-tight text-slate-900">
-            Kho Dữ liệu Bất Động Sản (Master Database)
+            {t("title")}
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Danh sách nguồn nhà bóc tách từ tin nhắn Zalo OA của các đối tác cung cấp bên ngoài
+            {t("subtitle")}
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-          <span>Tổng số:</span>
+          <span>{t("total")}:</span>
           <span className="px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 font-bold">
-            {displayRows.length} căn
+            {displayRows.length} {t("unit")}
           </span>
         </div>
       </div>

@@ -160,10 +160,10 @@ export function Navbar({
                 <div className="text-[10px] text-slate-400 flex items-center justify-end gap-1">
                   {currentUser.role === "admin" ? (
                     <span className="text-amber-400 font-bold flex items-center gap-0.5">
-                      <Shield className="w-2.5 h-2.5" /> 👑 Sếp (Admin)
+                      <Shield className="w-2.5 h-2.5" /> {t("common.adminRole")}
                     </span>
                   ) : (
-                    <span className="text-sky-300 font-medium">💼 Nhân viên</span>
+                    <span className="text-sky-300 font-medium">{t("common.staffRole")}</span>
                   )}
                 </div>
               </div>
@@ -171,7 +171,7 @@ export function Navbar({
               <form action={logout}>
                 <button
                   type="submit"
-                  title="Đăng xuất"
+                  title={t("common.logout")}
                   className="p-2 rounded-lg bg-slate-800/80 hover:bg-rose-900/40 text-slate-400 hover:text-rose-300 border border-slate-700/80 transition cursor-pointer"
                 >
                   <LogOut className="w-3.5 h-3.5" />

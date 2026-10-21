@@ -477,7 +477,7 @@ export function InboxView({
                           step="any"
                           value={formState.price_amount}
                           onChange={(e) => setFormState({ ...formState, price_amount: e.target.value })}
-                          placeholder="VD: 85000 hoặc 55000000"
+                          placeholder={t("inbox.placeholderPrice")}
                           className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500"
                         />
                       </div>
@@ -548,7 +548,7 @@ export function InboxView({
                         type="text"
                         value={formState.landlord_commission_text}
                         onChange={(e) => setFormState({ ...formState, landlord_commission_text: e.target.value })}
-                        placeholder="VD: 1 tháng"
+                        placeholder={t("inbox.placeholderCommission")}
                         className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white"
                       />
                     </div>
@@ -560,7 +560,7 @@ export function InboxView({
                         type="text"
                         value={formState.our_share_text}
                         onChange={(e) => setFormState({ ...formState, our_share_text: e.target.value })}
-                        placeholder="VD: 50%"
+                        placeholder={t("inbox.placeholderShare")}
                         className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white"
                       />
                     </div>

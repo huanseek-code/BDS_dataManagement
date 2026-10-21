@@ -23,7 +23,9 @@
     "login": "Đăng nhập",
     "refresh": "Làm mới",
     "all": "Tất cả",
-    "showBilingualLabel": "Tiêu đề song ngữ (中文 / Tiếng Việt)"
+    "showBilingualLabel": "Tiêu đề song ngữ (中文 / Tiếng Việt)",
+    "adminRole": "👑 Sếp (Admin)",
+    "staffRole": "💼 Nhân viên"
   },
   "nav": {
     "inbox": "Chờ duyệt",
@@ -59,13 +61,15 @@
     "partner": "外部供应合作伙伴\nĐối tác cung cấp bên ngoài",
     "partnerFirstSeen": "合作伙伴首次提供时间\nThời điểm đối tác cung cấp lần đầu",
     "zaloSenderTime": "Zalo 发信人及时间\nNgười gửi và giờ tin Zalo",
-    "entryTime": "入库时间 ( Hệ thống )\nThời điểm nhập hệ thống",
+    "entryTime": "入库时间 (Hệ thống)\nThời điểm nhập hệ thống",
     "landlordCommission": "房东给的佣金\nHoa hồng do chủ nhà trả",
     "ourShare": "我方分成\nPhần hoa hồng bên mình",
     "attachments": "照片/附件链接\nLink ảnh/tệp đính kèm",
     "originalMessage": "原始信息及消息引用\nNội dung gốc và ID/link tin nhắn"
   },
   "inbox": {
+    "pageTitle": "Hộp thư Nguồn Chờ Duyệt (Inbox Diff & Review)",
+    "pageSubtitle": "Đối chiếu tin nhắn gốc từ Zalo OA với các trường thông tin chuẩn hóa trước khi đưa vào kho",
     "title": "Hộp thư Chờ duyệt",
     "subtitle": "Danh sách tin nhắn Zalo gửi đến",
     "noPending": "Không có tin nhắn nào chờ duyệt",
@@ -108,7 +112,16 @@
     "approveSuccess": "Đã duyệt BĐS thành công vào Kho BĐS!",
     "rejectSuccess": "Đã từ chối tin nhắn BĐS!",
     "mergeSuccess": "Đã gộp tin nhắn thành công!",
-    "errorOccurred": "Lỗi khi xử lý"
+    "errorOccurred": "Lỗi khi xử lý",
+    "placeholderPrice": "VD: 85000 hoặc 55000000",
+    "placeholderCommission": "VD: 1 tháng",
+    "placeholderShare": "VD: 50%"
+  },
+  "properties": {
+    "title": "Kho Dữ liệu Bất Động Sản (Master Database)",
+    "subtitle": "Danh sách nguồn nhà bóc tách từ tin nhắn Zalo OA của các đối tác cung cấp bên ngoài",
+    "total": "Tổng số",
+    "unit": "căn"
   },
   "partners": {
     "title": "Danh sách Đối tác Cung cấp (External Partners)",
@@ -124,10 +137,10 @@
     "unnamed": "Chưa đặt tên"
   },
   "settings": {
-    "title": "Cài đặt Hệ thống",
-    "subtitle": "Quản lý tài khoản nhân sự và cấu hình trí tuệ nhân tạo Gemini",
+    "title": "Cài đặt Quản trị & Hệ thống",
+    "subtitle": "Quản lý nhân viên công ty, cấu hình thuật toán gom tin và mô hình trí tuệ nhân tạo AI",
     "staffTitle": "Quản lý Nhân sự & Phân quyền",
-    "aiPoolTitle": "Giám sát Google Gemini Multi-Key Pool",
+    "aiPoolTitle": "Trí tuệ nhân tạo AI (Google Gemini 3.x Multi-Key Pool)",
     "totalKeys": "Tổng số Key",
     "activeKeys": "Đang hoạt động",
     "coolingKeys": "Đang nghỉ (429)",
@@ -136,7 +149,21 @@
     "statusCooling": "Nghỉ do 429",
     "statusInvalid": "Key lỗi",
     "successCount": "Thành công",
-    "failCount": "Thất bại"
+    "failCount": "Thất bại",
+    "adminOnly": "Khu vực dành riêng cho Quản trị viên (Sếp)",
+    "adminOnlyDesc": "Tài khoản của bạn là Nhân viên, có toàn quyền khai thác, xử lý dữ liệu và duyệt nguồn BĐS. Bạn không thể can thiệp cài đặt kỹ thuật và quản lý nhân sự.",
+    "batchingTitle": "Thuật toán Gom tin tự động (Debounce & Batching)",
+    "idleTimeout": "Thời gian khoảng lặng (Idle Timeout)",
+    "idleDesc": "phút không có tin mới",
+    "idleHint": "Sau khoảng thời gian này kể từ tin nhắn cuối, phiên sẽ tự động chốt vào hàng chờ",
+    "maxWindow": "Khung thời gian tối đa (Max Window)",
+    "maxWindowDesc": "phút từ tin đầu tiên",
+    "maxWindowHint": "Nếu đối tác gửi liên tục quá thời gian này, hệ thống sẽ tự cắt cụm để xử lý",
+    "aiModel": "Mô hình AI",
+    "autoFallback": "Tự động Fallback 3.x khi quá tải",
+    "keyPoolList": "Danh sách Pool API Key",
+    "keyPoolTip": "Mẹo tối ưu chi phí: Bạn có thể tạo nhiều tài khoản Google AI Studio miễn phí và thêm các key vào biến GEMINI_API_KEYS trên Vercel. Khi một key chạm hạn mức (429), hệ thống sẽ tự động xoay tua sang key kế tiếp ngay lập tức!",
+    "dbStatus": "Cơ sở Dữ liệu & Kết nối Cloud"
   },
   "types": {
     "factory": "Nhà xưởng",

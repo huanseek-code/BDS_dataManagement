@@ -1,9 +1,11 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { InboxView } from "@/components/InboxView";
+import { getTranslations } from "next-intl/server";
 
 export const dynamic = "force-dynamic";
 
 export default async function InboxPage() {
+  const t = await getTranslations("inbox");
   const supabase = createAdminClient();
 
   // Fetch all pending property listings waiting for review
@@ -32,10 +34,10 @@ export default async function InboxPage() {
     <div className="space-y-4">
       <div>
         <h1 className="text-xl font-bold tracking-tight text-slate-900">
-          Hộp thư Nguồn Chờ Duyệt (Inbox Diff & Review)
+          {t("pageTitle")}
         </h1>
         <p className="text-xs text-slate-500 mt-0.5">
-          Đối chiếu tin nhắn gốc từ Zalo OA với các trường thông tin chuẩn hóa trước khi đưa vào kho
+          {t("pageSubtitle")}
         </p>
       </div>
 
@@ -43,4 +45,5 @@ export default async function InboxPage() {
     </div>
   );
 }
+
 

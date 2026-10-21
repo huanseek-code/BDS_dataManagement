@@ -4,9 +4,12 @@ import { StaffManagement } from "@/components/StaffManagement";
 import { getKeyPoolStatus } from "@/lib/ai/key-manager";
 import { Sliders, Bot, Clock, ShieldCheck, Database, Key, AlertTriangle, CheckCircle2, RotateCw } from "lucide-react";
 
+import { getTranslations } from "next-intl/server";
+
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
+  const t = await getTranslations("settings");
   const currentProfile = await getCurrentUserProfile();
 
   if (!currentProfile || currentProfile.role !== "admin") {
@@ -16,10 +19,10 @@ export default async function SettingsPage() {
           <AlertTriangle className="w-6 h-6" />
         </div>
         <h1 className="text-xl font-bold text-slate-900">
-          Khu vực dành riêng cho Quản trị viên (Sếp)
+          {t("adminOnly")}
         </h1>
         <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-          Tài khoản của bạn là <strong>Nhân viên</strong>, có toàn quyền khai thác, xử lý dữ liệu và duyệt nguồn BĐS. Bạn không thể can thiệp cài đặt kỹ thuật và quản lý nhân sự.
+          {t("adminOnlyDesc")}
         </p>
       </div>
     );
@@ -48,10 +51,10 @@ export default async function SettingsPage() {
     <div className="max-w-4xl space-y-6">
       <div>
         <h1 className="text-xl font-bold tracking-tight text-slate-900">
-          Cài đặt Quản trị & Hệ thống
+          {t("title")}
         </h1>
         <p className="text-xs text-slate-500 mt-0.5">
-          Quản lý nhân viên công ty, cấu hình thuật toán gom tin và mô hình trí tuệ nhân tạo AI
+          {t("subtitle")}
         </p>
       </div>
 
@@ -63,7 +66,7 @@ export default async function SettingsPage() {
         <div className="flex items-center gap-2.5 border-b pb-3">
           <Clock className="w-5 h-5 text-sky-600" />
           <h2 className="font-bold text-slate-900 text-sm">
-            Thuật toán Gom tin tự động (Debounce & Batching)
+            {t("batchingTitle")}
           </h2>
         </div>
 
@@ -110,7 +113,7 @@ export default async function SettingsPage() {
           <div className="flex items-center gap-2.5">
             <Bot className="w-5 h-5 text-emerald-600" />
             <h2 className="font-bold text-slate-900 text-sm">
-              Trí tuệ nhân tạo AI (Google Gemini 3.x Multi-Key Pool)
+              {t("aiPoolTitle")}
             </h2>
           </div>
           <span className="px-2.5 py-1 rounded-full font-bold text-[11px] bg-emerald-100 text-emerald-800">
@@ -190,7 +193,7 @@ export default async function SettingsPage() {
         <div className="flex items-center gap-2.5 border-b pb-3">
           <Database className="w-5 h-5 text-indigo-600" />
           <h2 className="font-bold text-slate-900 text-sm">
-            Cơ sở Dữ liệu & Kết nối Cloud
+            {t("dbStatus")}
           </h2>
         </div>
 
