@@ -1,11 +1,9 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PropertyTable, PropertyRow } from "@/components/PropertyTable";
-import { getTranslations } from "next-intl/server";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 10;
 
 export default async function PropertiesPage() {
-  const t = await getTranslations("properties");
   const supabase = createAdminClient();
 
   // Query properties from Supabase
@@ -182,27 +180,5 @@ export default async function PropertiesPage() {
         }))
       : demoData;
 
-  return (
-    <div className="space-y-4">
-      {/* Page Title */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-900">
-            {t("title")}
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            {t("subtitle")}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-          <span>{t("total")}:</span>
-          <span className="px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 font-bold">
-            {displayRows.length} {t("unit")}
-          </span>
-        </div>
-      </div>
-
-      <PropertyTable initialData={displayRows} />
-    </div>
-  );
+  return <PropertyTable initialData={displayRows} />;
 }

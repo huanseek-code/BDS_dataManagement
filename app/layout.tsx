@@ -1,9 +1,18 @@
 import type { Metadata } from "next";
-import { NextIntlClientProvider } from "next-intl";
-import { getMessages, getLocale } from "next-intl/server";
+import { getLocale } from "next-intl/server";
+import { I18nClientProvider } from "@/components/I18nClientProvider";
 import { Navbar } from "@/components/Navbar";
 import { getCurrentUserProfile } from "@/app/auth/actions";
+import viMessages from "@/messages/vi.json";
+import enMessages from "@/messages/en.json";
+import zhMessages from "@/messages/zh.json";
 import "./globals.css";
+
+const allMessages = {
+  vi: viMessages,
+  en: enMessages,
+  zh: zhMessages,
+};
 
 export const metadata: Metadata = {
   title: "Huanseek Real Estate - Quản lý Dữ liệu BĐS",
@@ -19,7 +28,6 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const locale = await getLocale();
-  const messages = await getMessages();
   const profile = await getCurrentUserProfile();
 
   return (
@@ -28,12 +36,12 @@ export default async function RootLayout({
         <meta name="zalo-platform-site-verification" content="VVonEuAAFmm7Xh0psQSd3HcmzJlrnYvcC3aq" />
       </head>
       <body className="min-h-full flex flex-col bg-slate-50 text-slate-900">
-        <NextIntlClientProvider messages={messages} locale={locale}>
+        <I18nClientProvider initialLocale={locale} allMessages={allMessages}>
           {profile && <Navbar currentUser={profile} />}
           <main className={profile ? "flex-1 w-full max-w-[1720px] mx-auto px-4 sm:px-6 py-6" : "flex-1 w-full"}>
             {children}
           </main>
-        </NextIntlClientProvider>
+        </I18nClientProvider>
       </body>
     </html>
   );

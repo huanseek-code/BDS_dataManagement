@@ -107,6 +107,24 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
 
   return (
     <div className="space-y-4">
+      {/* Page Title & Counter */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight text-slate-900">
+            {t("properties.title")}
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {t("properties.subtitle")}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+          <span>{t("properties.total")}:</span>
+          <span className="px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 font-bold">
+            {initialData.length} {t("properties.unit")}
+          </span>
+        </div>
+      </div>
+
       {/* Controls Bar */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between">
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">

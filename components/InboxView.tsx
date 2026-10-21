@@ -192,9 +192,20 @@ export function InboxView({
       : null;
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-      {/* Left List of Listings (4 cols) */}
-      <div className="lg:col-span-4 space-y-3">
+    <div className="space-y-4">
+      {/* Page Header */}
+      <div>
+        <h1 className="text-xl font-bold tracking-tight text-slate-900">
+          {t("inbox.pageTitle")}
+        </h1>
+        <p className="text-xs text-slate-500 mt-0.5">
+          {t("inbox.pageSubtitle")}
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left List of Listings (4 cols) */}
+        <div className="lg:col-span-4 space-y-3">
         <div className="flex items-center justify-between pb-1">
           <h2 className="font-bold text-slate-900 text-sm">
             {t("inbox.title")} ({listings.length})
@@ -602,5 +613,6 @@ export function InboxView({
         )}
       </div>
     </div>
+  </div>
   );
 }

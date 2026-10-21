@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useTranslations, useLocale } from "next-intl";
+import { useAppLocale } from "@/components/I18nClientProvider";
 import {
   Building2,
   Inbox,
@@ -30,13 +31,17 @@ export function Navbar({
 }) {
   const t = useTranslations();
   const currentLocale = useLocale();
+  const { setLocale } = useAppLocale();
   const pathname = usePathname();
-  const router = useRouter();
 
   const handleLanguageChange = (newLocale: string) => {
-    document.cookie = `NEXT_LOCALE=${newLocale}; path=/; max-age=31536000; SameSite=Lax`;
-    router.refresh();
+    setLocale(newLocale);
   };
+
+  const isPropertiesTab = pathname.startsWith("/properties");
+  const isPartnersTab = pathname.startsWith("/partners");
+  const showExport = isPropertiesTab || isPartnersTab;
+  const exportHref = isPartnersTab ? "/api/export/partners" : "/api/export/properties";
 
   const navItems = [
     {
@@ -73,6 +78,7 @@ export function Navbar({
         <div className="flex items-center gap-8">
           <Link
             href="/inbox"
+            prefetch={true}
             className="flex items-center gap-2.5 font-bold text-lg tracking-tight hover:opacity-90 transition"
           >
             <div className="w-9 h-9 rounded-lg bg-sky-500 flex items-center justify-center text-white shadow-sm font-extrabold text-xl">
@@ -95,6 +101,7 @@ export function Navbar({
                 <Link
                   key={item.href}
                   href={item.href}
+                  prefetch={true}
                   className={`flex items-center gap-2 px-3.5 py-2 rounded-md text-sm font-medium transition ${
                     isActive
                       ? "bg-sky-600/30 text-sky-200 border border-sky-400/30 shadow-inner"
@@ -116,14 +123,17 @@ export function Navbar({
 
         {/* Right Section: Language Switcher, User Profile & Actions */}
         <div className="flex items-center gap-3">
-          {/* Quick Export Excel */}
-          <Link
-            href="/api/export/properties"
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow transition"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>{t("common.exportExcel")}</span>
-          </Link>
+          {/* Export Excel (chỉ xuất hiện ở Kho BĐS hoặc Đối tác) */}
+          {showExport && (
+            <Link
+              href={exportHref}
+              prefetch={false}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow transition"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>{t("common.exportExcel")}</span>
+            </Link>
+          )}
 
           {/* Language Switcher */}
           <div className="flex items-center bg-slate-800/80 rounded-lg p-1 border border-slate-700/80 text-xs">

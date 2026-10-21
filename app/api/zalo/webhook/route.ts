@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
+import { revalidatePath } from "next/cache";
 import crypto from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractPropertiesFromChat } from "@/lib/ai/extract";
@@ -309,6 +310,7 @@ export async function POST(req: NextRequest) {
                   .eq("id", subId);
 
                 console.log(`[Instant Processing] Created ${result.properties.length} new listing(s) for submission ${subId}`);
+                revalidatePath("/inbox");
               }
             }
           }

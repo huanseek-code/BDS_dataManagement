@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractPropertiesFromChat } from "@/lib/ai/extract";
 
@@ -118,6 +119,7 @@ ${sourceText}
       })
       .eq("id", sourceListingId);
 
+    revalidatePath("/inbox");
     return NextResponse.json({
       success: true,
       message: "Đã gộp 2 nguồn BĐS thành 1 thành công!",

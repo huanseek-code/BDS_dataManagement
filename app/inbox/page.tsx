@@ -1,11 +1,9 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { InboxView } from "@/components/InboxView";
-import { getTranslations } from "next-intl/server";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 5;
 
 export default async function InboxPage() {
-  const t = await getTranslations("inbox");
   const supabase = createAdminClient();
 
   // Fetch all pending property listings waiting for review
@@ -30,20 +28,5 @@ export default async function InboxPage() {
     .eq("review_status", "pending")
     .order("created_at", { ascending: false });
 
-  return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-bold tracking-tight text-slate-900">
-          {t("pageTitle")}
-        </h1>
-        <p className="text-xs text-slate-500 mt-0.5">
-          {t("pageSubtitle")}
-        </p>
-      </div>
-
-      <InboxView initialListings={pendingListings || []} />
-    </div>
-  );
+  return <InboxView initialListings={pendingListings || []} />;
 }
-
-

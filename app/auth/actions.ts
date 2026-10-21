@@ -45,7 +45,9 @@ export async function logout() {
   redirect("/login");
 }
 
-export async function getCurrentUserProfile() {
+import { cache } from "react";
+
+export const getCurrentUserProfile = cache(async () => {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
@@ -58,4 +60,5 @@ export async function getCurrentUserProfile() {
     .single();
 
   return profile;
-}
+});
+
