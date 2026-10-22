@@ -29,6 +29,20 @@ export async function GET() {
         display_name,
         phone,
         first_seen_at
+      ),
+      property_listings(
+        id,
+        created_at,
+        reviewed_at,
+        submissions(
+          first_msg_at,
+          last_msg_at
+        ),
+        partners(
+          display_name,
+          phone,
+          zalo_user_id
+        )
       )
     `)
     .order("created_at", { ascending: false });
@@ -52,8 +66,8 @@ export async function GET() {
     { header: "关键细节\nChi tiết chính", key: "key_details", width: 38 },
     { header: "外部供应合作伙伴\nĐối tác cung cấp bên ngoài", key: "partner", width: 24 },
     { header: "合作伙伴首次提供时间\nThời điểm đối tác cung cấp lần đầu", key: "partner_first_seen", width: 24 },
-    { header: "Zalo 发信人及时间\nNgười gửi và giờ tin Zalo", key: "zalo_sender_time", width: 22 },
-    { header: "入库时间 ( 系统 )\nThời điểm nhập hệ thống", key: "entry_time", width: 20 },
+    { header: "Zalo 发信人及时间\nNgười gửi và giờ tin Zalo", key: "zalo_sender_time", width: 26 },
+    { header: "审核入库时间\nThời điểm duyệt đơn", key: "entry_time", width: 22 },
     { header: "房东给的佣金\nHoa hồng do chủ nhà trả", key: "landlord_commission", width: 22 },
     { header: "我方分成\nPhần hoa hồng bên mình", key: "our_share", width: 18 },
     { header: "照片/附件链接\nLink ảnh/tệp đính kèm", key: "attachments", width: 28 },
@@ -100,6 +114,31 @@ export async function GET() {
       ? p.attachments.map((a: any) => a.url || a.path).join("\n")
       : "";
 
+    const listing = p.property_listings?.[0];
+    const sender =
+      listing?.partners?.display_name ||
+      p.primary_partner?.display_name ||
+      (listing?.partners?.phone ? `SĐT: ${listing.partners.phone}` : "") ||
+      (listing?.partners?.zalo_user_id && listing.partners.zalo_user_id !== "unknown_user"
+        ? `Zalo: ${listing.partners.zalo_user_id.slice(-6)}`
+        : "");
+
+    const msgTime =
+      listing?.submissions?.first_msg_at ||
+      listing?.submissions?.last_msg_at ||
+      listing?.created_at;
+
+    const formattedMsgTime = msgTime
+      ? new Date(msgTime).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })
+      : "";
+
+    const zaloCol = [sender, formattedMsgTime].filter(Boolean).join(" • ");
+
+    const approvedAt = listing?.reviewed_at || p.created_at;
+    const approvalTimeStr = approvedAt
+      ? new Date(approvedAt).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })
+      : "";
+
     worksheet.addRow({
       code: p.code,
       address: p.address_text,
@@ -112,8 +151,8 @@ export async function GET() {
       partner_first_seen: p.primary_partner?.first_seen_at
         ? new Date(p.primary_partner.first_seen_at).toLocaleDateString("vi-VN")
         : "",
-      zalo_sender_time: p.primary_partner?.display_name || "",
-      entry_time: p.created_at ? new Date(p.created_at).toLocaleString("vi-VN") : "",
+      zalo_sender_time: zaloCol,
+      entry_time: approvalTimeStr,
       landlord_commission: p.landlord_commission_text || "",
       our_share: p.our_share_percent ? `${p.our_share_percent}%` : p.our_share_text || "",
       attachments: attachmentUrls,

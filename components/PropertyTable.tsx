@@ -36,6 +36,8 @@ export interface PropertyRow {
     phone?: string | null;
     first_seen_at?: string | null;
   } | null;
+  zalo_sender_name?: string | null;
+  zalo_msg_time?: string | null;
   zalo_sender_time?: string | null;
   entry_time: string;
   landlord_commission_text?: string | null;
@@ -295,12 +297,23 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
 
                       {/* 10. Người gửi và giờ tin Zalo */}
                       <td className="p-3 text-slate-600 text-[11px]">
-                        {row.zalo_sender_time || formatDate(row.entry_time)}
+                        {row.zalo_sender_name && (
+                          <div className="font-medium text-slate-800 truncate max-w-[150px]" title={row.zalo_sender_name}>
+                            {row.zalo_sender_name}
+                          </div>
+                        )}
+                        <div className={row.zalo_sender_name ? "text-slate-500" : "font-medium text-slate-700"}>
+                          {row.zalo_msg_time
+                            ? formatDate(row.zalo_msg_time)
+                            : row.zalo_sender_time || "—"}
+                        </div>
                       </td>
 
-                      {/* 11. Thời điểm nhập hệ thống */}
-                      <td className="p-3 text-slate-500 text-[11px]">
-                        {formatDate(row.entry_time)}
+                      {/* 11. Thời điểm duyệt đơn */}
+                      <td className="p-3 text-slate-600 text-[11px] whitespace-nowrap">
+                        <div className="font-medium text-slate-800">
+                          {formatDate(row.entry_time)}
+                        </div>
                       </td>
 
                       {/* 12. Hoa hồng chủ nhà */}

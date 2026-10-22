@@ -36,6 +36,21 @@ export default async function PropertiesPage() {
         display_name,
         phone,
         first_seen_at
+      ),
+      property_listings(
+        id,
+        created_at,
+        reviewed_at,
+        location_note,
+        submissions(
+          first_msg_at,
+          last_msg_at
+        ),
+        partners(
+          display_name,
+          phone,
+          zalo_user_id
+        )
       )
     `)
     .order("created_at", { ascending: false });
@@ -67,6 +82,8 @@ export default async function PropertiesPage() {
         phone: "0908 123 456",
         first_seen_at: "2026-10-10T08:30:00Z",
       },
+      zalo_sender_name: "Anh Tuấn (Môi giới BD)",
+      zalo_msg_time: "2026-10-10T08:30:00Z",
       zalo_sender_time: "Anh Tuấn • 10/10/2026 08:30",
       entry_time: "2026-10-10T08:35:12Z",
       landlord_commission_text: "1 tháng tiền thuê (hợp đồng 3 năm)",
@@ -103,6 +120,8 @@ export default async function PropertiesPage() {
         phone: "0912 345 678",
         first_seen_at: "2026-10-11T14:20:00Z",
       },
+      zalo_sender_name: "Chị Lan (BĐS Trung Tâm)",
+      zalo_msg_time: "2026-10-11T14:20:00Z",
       zalo_sender_time: "Chị Lan • 11/10/2026 14:20",
       entry_time: "2026-10-11T14:25:05Z",
       landlord_commission_text: "1/2 tháng tiền nhà",
@@ -138,6 +157,8 @@ export default async function PropertiesPage() {
         phone: "0933 999 888",
         first_seen_at: "2026-10-12T09:15:00Z",
       },
+      zalo_sender_name: "Hoàng Nam Logistics",
+      zalo_msg_time: "2026-10-12T09:15:00Z",
       zalo_sender_time: "Hoàng Nam • 12/10/2026 09:15",
       entry_time: "2026-10-12T09:20:44Z",
       landlord_commission_text: "1 tháng tiền thuê",
@@ -153,31 +174,55 @@ export default async function PropertiesPage() {
 
   const displayRows: PropertyRow[] =
     properties && properties.length > 0
-      ? properties.map((p: any) => ({
-          id: p.id,
-          code: p.code,
-          address_text: p.address_text,
-          house_number: p.house_number,
-          street_name: p.street_name,
-          ward: p.ward,
-          district_legacy: p.district_legacy,
-          province: p.province,
-          property_types: p.property_types || [],
-          floor_area_m2: p.floor_area_m2,
-          total_lease_area_m2: p.total_lease_area_m2,
-          price_amount: p.price_amount,
-          price_currency: p.price_currency || "VND",
-          price_period: p.price_period || "month",
-          price_basis: p.price_basis || "total",
-          price_text: p.price_text,
-          key_details: p.key_details || {},
-          primary_partner: p.primary_partner,
-          entry_time: p.created_at,
-          landlord_commission_text: p.landlord_commission_text,
-          our_share_percent: p.our_share_percent,
-          our_share_text: p.our_share_text,
-          attachments: Array.isArray(p.attachments) ? p.attachments : [],
-        }))
+      ? properties.map((p: any) => {
+          const listing = p.property_listings?.[0];
+          const senderName =
+            listing?.partners?.display_name ||
+            p.primary_partner?.display_name ||
+            (listing?.partners?.phone ? `SĐT: ${listing.partners.phone}` : null) ||
+            (listing?.partners?.zalo_user_id && listing.partners.zalo_user_id !== "unknown_user"
+              ? `Zalo: ${listing.partners.zalo_user_id.slice(-6)}`
+              : null);
+
+          // Giờ tin nhắn Zalo: lấy từ submission first_msg_at hoặc listing created_at
+          const zaloMsgTime =
+            listing?.submissions?.first_msg_at ||
+            listing?.submissions?.last_msg_at ||
+            listing?.created_at ||
+            null;
+
+          // Thời điểm duyệt đơn: reviewed_at hoặc p.created_at
+          const approvalTime = listing?.reviewed_at || p.created_at;
+
+          return {
+            id: p.id,
+            code: p.code,
+            address_text: p.address_text,
+            house_number: p.house_number,
+            street_name: p.street_name,
+            ward: p.ward,
+            district_legacy: p.district_legacy,
+            province: p.province,
+            property_types: p.property_types || [],
+            floor_area_m2: p.floor_area_m2,
+            total_lease_area_m2: p.total_lease_area_m2,
+            price_amount: p.price_amount,
+            price_currency: p.price_currency || "VND",
+            price_period: p.price_period || "month",
+            price_basis: p.price_basis || "total",
+            price_text: p.price_text,
+            key_details: p.key_details || {},
+            primary_partner: p.primary_partner,
+            zalo_sender_name: senderName,
+            zalo_msg_time: zaloMsgTime,
+            entry_time: approvalTime,
+            landlord_commission_text: p.landlord_commission_text,
+            our_share_percent: p.our_share_percent,
+            our_share_text: p.our_share_text,
+            attachments: Array.isArray(p.attachments) ? p.attachments : [],
+            raw_text: listing?.location_note || null,
+          };
+        })
       : demoData;
 
   return <PropertyTable initialData={displayRows} />;
