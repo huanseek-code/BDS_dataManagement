@@ -25,6 +25,10 @@ import {
   Loader2,
   Calendar,
   ShieldAlert,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 
 export interface PropertyRow {
@@ -86,6 +90,10 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
   const [showBilingual, setShowBilingual] = useState<boolean>(true);
   const [previewImages, setPreviewImages] = useState<string[] | null>(null);
 
+  // Phân trang & kích thước trang
+  const [pageSize, setPageSize] = useState<number>(20);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+
   // Modal 2: Rental Options & Fee Matrix
   const [selectedOptionModal, setSelectedOptionModal] = useState<PropertyRow | null>(null);
 
@@ -109,6 +117,15 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
 
     return matchesSearch && matchesType;
   });
+
+  // Tính toán phân trang
+  const totalItems = filteredData.length;
+  const effectivePageSize = pageSize === -1 ? (totalItems || 1) : pageSize;
+  const totalPages = Math.max(1, Math.ceil(totalItems / effectivePageSize));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+  const startIndex = (safeCurrentPage - 1) * effectivePageSize;
+  const endIndex = Math.min(startIndex + effectivePageSize, totalItems);
+  const paginatedData = pageSize === -1 ? filteredData : filteredData.slice(startIndex, endIndex);
 
   const propertyTypesList = [
     { key: "all", label: t("common.all") },
@@ -293,13 +310,16 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between">
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
           {/* Search box */}
-          <div className="relative min-w-[280px]">
+          <div className="relative min-w-[260px]">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               placeholder={t("common.search")}
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setCurrentPage(1);
+              }}
               className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500 transition"
             />
           </div>
@@ -309,7 +329,10 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
             <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
             <select
               value={selectedType}
-              onChange={(e) => setSelectedType(e.target.value)}
+              onChange={(e) => {
+                setSelectedType(e.target.value);
+                setCurrentPage(1);
+              }}
               className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
             >
               {propertyTypesList.map((pt) => (
@@ -318,6 +341,26 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Page size selector */}
+          <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium pl-1 border-l border-slate-200">
+            <span>{t("common.rowsPerPage")}</span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-800 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
+            >
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={-1}>{t("common.all")}</option>
+            </select>
+            <span>{t("common.perPage")}</span>
           </div>
         </div>
 
@@ -367,7 +410,7 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredData.length === 0 ? (
+              {totalItems === 0 ? (
                 <tr>
                   <td colSpan={15} className="py-16 text-center text-slate-400">
                     <Building className="w-8 h-8 mx-auto mb-2 text-slate-300" />
@@ -375,7 +418,7 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
                   </td>
                 </tr>
               ) : (
-                filteredData.map((row, idx) => {
+                paginatedData.map((row, idx) => {
                   const keyDetailsText =
                     typeof row.key_details === "object"
                       ? row.key_details?.[locale] || row.key_details?.vi || JSON.stringify(row.key_details)
@@ -559,6 +602,95 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
           </table>
         </div>
       </div>
+
+      {/* Pagination Controls */}
+      {totalItems > 0 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 bg-white rounded-xl border border-slate-200 shadow-sm text-xs text-slate-600">
+          <div className="font-medium text-slate-600">
+            <span>{t("common.showing")} </span>
+            <strong className="text-slate-900 font-bold">{totalItems === 0 ? 0 : startIndex + 1}</strong>
+            <span> - </span>
+            <strong className="text-slate-900 font-bold">{endIndex}</strong>
+            <span> {t("common.of")} </span>
+            <strong className="text-sky-700 font-bold">{totalItems}</strong>
+            <span> {t("common.propertiesUnit")}</span>
+            {pageSize !== -1 && (
+              <span className="text-slate-400 ml-2">
+                ({t("common.page")} {safeCurrentPage} / {totalPages})
+              </span>
+            )}
+          </div>
+
+          {pageSize !== -1 && totalPages > 1 && (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                disabled={safeCurrentPage <= 1}
+                onClick={() => setCurrentPage(1)}
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                title="Trang đầu"
+              >
+                <ChevronsLeft className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                disabled={safeCurrentPage <= 1}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer font-semibold"
+                title="Trang trước"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                <span>{t("common.prevPage")}</span>
+              </button>
+
+              <div className="flex items-center gap-1 px-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter((p) => p === 1 || p === totalPages || Math.abs(p - safeCurrentPage) <= 2)
+                  .map((p, idx, arr) => {
+                    const prev = arr[idx - 1];
+                    const showEllipsis = prev && p - prev > 1;
+                    return (
+                      <span key={p} className="flex items-center">
+                        {showEllipsis && <span className="px-1 text-slate-400 font-bold">...</span>}
+                        <button
+                          type="button"
+                          onClick={() => setCurrentPage(p)}
+                          className={`w-7 h-7 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center ${
+                            safeCurrentPage === p
+                              ? "bg-sky-600 text-white shadow-xs"
+                              : "text-slate-700 hover:bg-slate-100 border border-slate-200"
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      </span>
+                    );
+                  })}
+              </div>
+
+              <button
+                type="button"
+                disabled={safeCurrentPage >= totalPages}
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer font-semibold"
+                title="Trang sau"
+              >
+                <span>{t("common.nextPage")}</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                disabled={safeCurrentPage >= totalPages}
+                onClick={() => setCurrentPage(totalPages)}
+                className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                title="Trang cuối"
+              >
+                <ChevronsRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* MODAL 1: LIGHTBOX ZOOM XEM ẢNH */}
       {previewImages && (

@@ -25,7 +25,15 @@
     "all": "Tất cả",
     "showBilingualLabel": "Tiêu đề song ngữ (中文 / Tiếng Việt)",
     "adminRole": "👑 Sếp (Admin)",
-    "staffRole": "💼 Nhân viên"
+    "staffRole": "💼 Nhân viên",
+    "rowsPerPage": "Hiển thị:",
+    "perPage": "/ trang",
+    "showing": "Hiển thị",
+    "of": "trên tổng số",
+    "propertiesUnit": "căn BĐS",
+    "page": "Trang",
+    "prevPage": "Trước",
+    "nextPage": "Sau"
   },
   "nav": {
     "inbox": "Chờ duyệt",

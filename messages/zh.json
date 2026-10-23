@@ -25,7 +25,15 @@
     "all": "全部",
     "showBilingualLabel": "双语表头 (中文 / Tiếng Việt)",
     "adminRole": "👑 主管 (Admin)",
-    "staffRole": "💼 员工"
+    "staffRole": "💼 员工",
+    "rowsPerPage": "每页显示:",
+    "perPage": "/ 页",
+    "showing": "显示第",
+    "of": "条，共",
+    "propertiesUnit": "套房源",
+    "page": "页",
+    "prevPage": "上一页",
+    "nextPage": "下一页"
   },
   "nav": {
     "inbox": "待审核",

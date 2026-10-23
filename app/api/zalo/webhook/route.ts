@@ -5,6 +5,7 @@ import crypto from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractPropertiesFromChat } from "@/lib/ai/extract";
 import { downloadAndPersistZaloImage } from "@/lib/storage/r2";
+import { fetchAndSyncZaloUserProfile } from "@/lib/zalo/profile";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -162,11 +163,18 @@ export async function POST(req: NextRequest) {
           // 1. Tìm partner_id tương ứng với zaloUserId
           const { data: partner } = await supabaseAdmin
             .from("partners")
-            .select("id")
+            .select("id, display_name")
             .eq("zalo_user_id", zaloUserId)
             .maybeSingle();
 
           if (!partner) return;
+
+          // Tự động đồng bộ tên hiển thị từ Zalo OA nếu chưa có tên
+          if (!partner.display_name || partner.display_name.trim().length === 0) {
+            fetchAndSyncZaloUserProfile(zaloUserId, partner.id).catch((err) =>
+              console.error("[Zalo Webhook] Auto sync profile error:", err)
+            );
+          }
 
           // 2. Tìm hồ sơ BĐS đang "Chờ duyệt" (review_status = 'pending') gần nhất trong vòng 2 giờ
           const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();

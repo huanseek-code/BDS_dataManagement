@@ -25,7 +25,15 @@
     "all": "All",
     "showBilingualLabel": "Bilingual Headers (中文 / Tiếng Việt)",
     "adminRole": "👑 Manager (Admin)",
-    "staffRole": "💼 Staff"
+    "staffRole": "💼 Staff",
+    "rowsPerPage": "Show:",
+    "perPage": "/ page",
+    "showing": "Showing",
+    "of": "of",
+    "propertiesUnit": "properties",
+    "page": "Page",
+    "prevPage": "Prev",
+    "nextPage": "Next"
   },
   "nav": {
     "inbox": "Pending Review",
