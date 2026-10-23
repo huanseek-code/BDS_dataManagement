@@ -37,6 +37,7 @@
     "code": "房源代号",
     "address": "地址/位置",
     "types": "类型/用途",
+    "propertyTypes": "物业类型",
     "floorArea": "单层面积 (㎡)",
     "totalLeaseArea": "出租总面积 (㎡)",
     "price": "报价 (含币种/期限)",
@@ -133,7 +134,8 @@
     "handoverBareShell": "毛坯交付 (未装修)",
     "handoverBasicUnfurnished": "简装空房 (无家具)",
     "handoverPartiallyFurnished": "配基础家具 (配空调/橱柜)",
-    "handoverFullyFurnished": "全配精装 (拎包入住)"
+    "handoverFullyFurnished": "全配精装 (拎包入住)",
+    "propertyTypes": "物业类型"
   },
   "properties": {
     "title": "房源主数据库 (Master Database)",

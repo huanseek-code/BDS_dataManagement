@@ -37,6 +37,7 @@
     "code": "Mã BĐS",
     "address": "Địa chỉ/Vị trí",
     "types": "Loại hình/Mục đích",
+    "propertyTypes": "Loại hình BĐS",
     "floorArea": "Diện tích một tầng (m²)",
     "totalLeaseArea": "Tổng diện tích cho thuê (m²)",
     "price": "Giá chào (tiền tệ/kỳ)",
@@ -133,7 +134,8 @@
     "handoverBareShell": "Bàn giao thô (Chưa hoàn thiện)",
     "handoverBasicUnfurnished": "Hoàn thiện cơ bản (Không đồ)",
     "handoverPartiallyFurnished": "Nội thất cơ bản (Bếp, điều hòa)",
-    "handoverFullyFurnished": "Đầy đủ nội thất (Full đồ)"
+    "handoverFullyFurnished": "Đầy đủ nội thất (Full đồ)",
+    "propertyTypes": "Loại hình BĐS"
   },
   "properties": {
     "title": "Kho Dữ liệu Bất Động Sản (Master Database)",

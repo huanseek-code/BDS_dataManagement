@@ -612,7 +612,7 @@ export function InboxView({
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <label className="text-[11px] font-semibold text-slate-700 block">
-                          {t("columns.propertyTypes")} <span className="text-rose-500">*</span>
+                          {t("inbox.propertyTypes")} <span className="text-rose-500">*</span>
                         </label>
                         {(!formState.property_types || formState.property_types.length === 0) && (
                           <span className="text-[10px] text-rose-600 font-bold flex items-center gap-0.5">

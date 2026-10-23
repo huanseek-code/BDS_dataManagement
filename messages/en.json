@@ -37,6 +37,7 @@
     "code": "Property Code",
     "address": "Address / Location",
     "types": "Type / Purpose",
+    "propertyTypes": "Property Type",
     "floorArea": "Floor Area (m²)",
     "totalLeaseArea": "Total Lease Area (m²)",
     "price": "Asking Price (Currency/Period)",
@@ -133,7 +134,8 @@
     "handoverBareShell": "Bare shell (Unfinished)",
     "handoverBasicUnfurnished": "Basic finish (Unfurnished)",
     "handoverPartiallyFurnished": "Partially furnished (AC, Kitchen)",
-    "handoverFullyFurnished": "Fully furnished"
+    "handoverFullyFurnished": "Fully furnished",
+    "propertyTypes": "Property Type"
   },
   "properties": {
     "title": "Property Master Database",

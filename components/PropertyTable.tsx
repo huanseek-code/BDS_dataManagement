@@ -814,7 +814,7 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
                   {/* Loại hình BĐS */}
                   <div>
                     <label className="text-[11px] font-semibold text-slate-700 block mb-1">
-                      {t("columns.propertyTypes")} <span className="text-rose-500">*</span>
+                      {t("inbox.propertyTypes")} <span className="text-rose-500">*</span>
                     </label>
                     <div className="flex flex-wrap gap-1.5">
                       {AVAILABLE_PROPERTY_TYPES.map((pt) => {
