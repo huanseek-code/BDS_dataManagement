@@ -12,6 +12,10 @@ const nextConfig: NextConfig = {
       },
     },
   },
+  experimental: {
+    // @ts-ignore
+    agentUpgrade: "security",
+  },
 };
 
 export default withNextIntl(nextConfig);
