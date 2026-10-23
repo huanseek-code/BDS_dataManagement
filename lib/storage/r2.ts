@@ -89,45 +89,65 @@ export async function downloadAndPersistZaloImage(zaloUrl: string): Promise<stri
     return zaloUrl;
   }
 
-  try {
-    const response = await fetch(zaloUrl, {
-      headers: {
-        "User-Agent": "Huanseek-Bot/1.0",
-      },
-    });
-
-    if (!response.ok) {
-      console.warn(`Không thể tải ảnh từ Zalo (${response.status}): ${zaloUrl.slice(0, 60)}`);
-      return zaloUrl;
-    }
-
-    const arrayBuffer = await response.arrayBuffer();
-    const inputBuffer = Buffer.from(arrayBuffer);
-
-    let finalBuffer: Buffer = inputBuffer;
-    let extension = "webp";
-    let mimeType = "image/webp";
-
+  for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      // Tối ưu hóa dung lượng với sharp (nén WebP chất lượng 82% siêu nhẹ)
-      const sharp = (await import("sharp")).default;
-      finalBuffer = await sharp(inputBuffer)
-        .webp({ quality: 82 })
-        .toBuffer();
-    } catch {
-      // Fallback nếu sharp gặp lỗi format
-      extension = "jpg";
-      mimeType = "image/jpeg";
+      const response = await fetch(zaloUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        },
+      });
+
+      if (!response.ok) {
+        console.warn(`[R2 Download] Attempt ${attempt} failed (${response.status}): ${zaloUrl.slice(0, 60)}`);
+        if (attempt === 2) return zaloUrl;
+        await new Promise((r) => setTimeout(r, 400));
+        continue;
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      const inputBuffer = Buffer.from(arrayBuffer);
+
+      if (inputBuffer.length < 500) {
+        console.warn(`[R2 Download] Attempt ${attempt} returned small buffer (${inputBuffer.length} bytes): ${zaloUrl.slice(0, 60)}`);
+        if (attempt === 2) return zaloUrl;
+        await new Promise((r) => setTimeout(r, 400));
+        continue;
+      }
+
+      let finalBuffer: Buffer = inputBuffer;
+      let extension = "webp";
+      let mimeType = "image/webp";
+
+      try {
+        // Tối ưu hóa dung lượng với sharp (nén WebP chất lượng 82% siêu nhẹ)
+        const sharp = (await import("sharp")).default;
+        finalBuffer = await sharp(inputBuffer)
+          .webp({ quality: 82 })
+          .toBuffer();
+      } catch {
+        // Fallback nếu sharp gặp lỗi format
+        extension = "jpg";
+        mimeType = "image/jpeg";
+      }
+
+      if (finalBuffer.length < 500) {
+        return zaloUrl;
+      }
+
+      const datePrefix = new Date().toISOString().slice(0, 10).replace(/-/g, "/");
+      const uniqueId = `img_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${extension}`;
+      const r2Key = `properties/${datePrefix}/${uniqueId}`;
+
+      const permanentUrl = await uploadToR2(finalBuffer, r2Key, mimeType);
+      return permanentUrl || zaloUrl;
+    } catch (err: any) {
+      if (attempt === 2) {
+        console.error("Lỗi trong quá trình persist ảnh Zalo sang R2:", err?.message || err);
+        return zaloUrl;
+      }
+      await new Promise((r) => setTimeout(r, 400));
     }
-
-    const datePrefix = new Date().toISOString().slice(0, 10).replace(/-/g, "/");
-    const uniqueId = `img_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${extension}`;
-    const r2Key = `properties/${datePrefix}/${uniqueId}`;
-
-    const permanentUrl = await uploadToR2(finalBuffer, r2Key, mimeType);
-    return permanentUrl || zaloUrl;
-  } catch (err: any) {
-    console.error("Lỗi trong quá trình persist ảnh Zalo sang R2:", err?.message || err);
-    return zaloUrl;
   }
+
+  return zaloUrl;
 }

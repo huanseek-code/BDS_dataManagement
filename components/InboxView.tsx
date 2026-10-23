@@ -121,6 +121,16 @@ export function InboxView({
     }
   };
 
+  function normalizeHandoverCondition(val?: string | null): string {
+    if (!val) return "basic_unfurnished";
+    const s = String(val).toLowerCase().trim();
+    if (s === "bare_shell" || s.includes("thô") || s.includes("毛坯")) return "bare_shell";
+    if (s === "fully_furnished" || s.includes("full") || s.includes("đầy đủ") || s.includes("精装") || s.includes("furnished")) return "fully_furnished";
+    if (s === "partially_furnished" || s.includes("liền tường") || s.includes("cơ bản") || s.includes("bán hoàn thiện")) return "partially_furnished";
+    if (s === "basic_unfurnished" || s.includes("không đồ") || s.includes("nhà trống") || s.includes("chưa đồ") || s.includes("简装")) return "basic_unfurnished";
+    return "basic_unfurnished";
+  }
+
   function extractFormData(listing: any) {
     const rawAttachments = Array.isArray(listing.attachments)
       ? listing.attachments
@@ -149,10 +159,9 @@ export function InboxView({
       price_text: listing.price_text || listing.ai_extracted?.price_text || "",
       landlord_commission_text: listing.landlord_commission_text || "",
       our_share_text: listing.our_share_text || "",
-      handover_condition:
-        listing.ai_extracted?.handover_condition ||
-        listing.handover_condition ||
-        "basic_unfurnished",
+      handover_condition: normalizeHandoverCondition(
+        listing.handover_condition || listing.ai_extracted?.handover_condition
+      ),
       details_vi: listing.key_details?.vi || "",
       details_zh: listing.key_details?.zh || "",
       details_en: listing.key_details?.en || "",
@@ -672,6 +681,17 @@ export function InboxView({
                               src={url}
                               alt={`Zalo attachment ${idx + 1}`}
                               onClick={() => setActiveLightboxImg(url)}
+                              onError={(e) => {
+                                const target = e.currentTarget;
+                                target.style.display = "none";
+                                if (target.parentElement && !target.parentElement.querySelector(".img-err-fallback")) {
+                                  target.parentElement.classList.add("bg-slate-100", "flex", "items-center", "justify-center");
+                                  const span = document.createElement("span");
+                                  span.className = "img-err-fallback text-[10px] text-slate-400 font-medium text-center px-1 select-none";
+                                  span.innerText = "⚠️ Ảnh hỏng";
+                                  target.parentElement.appendChild(span);
+                                }
+                              }}
                               className="w-full h-full object-cover cursor-pointer hover:scale-105 transition"
                             />
                             {/* Nút gỡ ảnh rác */}

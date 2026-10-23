@@ -79,12 +79,14 @@ QUY TẮC CỐT LÕI:
    - "80 ạ", "80 tr", "80 triệu" -> price_amount: 80000000, price_currency: "VND", price_basis: "total", price_period: "month"
    - "50 triệu/tháng", "50tr", "chủ chốt 50tr", "thuê 50 củ" -> price_amount: 50000000, price_currency: "VND", price_basis: "total", price_period: "month"
    - "16,5 triệu", "16.5tr" -> price_amount: 16500000, price_currency: "VND", price_basis: "total", price_period: "month"
-   - "12 triệu" -> price_amount: 12000000, price_currency: "VND", price_basis: "total", price_period: "month"
+   - "18 triệu/tháng", "18tr" -> price_amount: 18000000, price_currency: "VND", price_basis: "total", price_period: "month"
+   - "200 tr/ tháng", "200 triệu" -> price_amount: 200000000, price_currency: "VND", price_basis: "total", price_period: "month"
+   - "39 triệu" -> price_amount: 39000000, price_currency: "VND", price_basis: "total", price_period: "month"
    - "2000$", "2000 usd" -> price_amount: 2000, price_currency: "USD", price_basis: "total", price_period: "month"
    - "12 tỷ 5", "12.5 tỷ" -> price_amount: 12500000000, price_currency: "VND", price_basis: "total", price_period: "one_time"
    - "85000đ/m2", "85k/m2" -> price_amount: 85000, price_currency: "VND", price_basis: "per_m2", price_period: "month"
    - "4.5 USD/m2", "5$/m2" -> price_amount: 4.5, price_currency: "USD", price_basis: "per_m2", price_period: "month"
-   - Luôn sao chép NGUYÊN VĂN chuỗi giá vào "price_text" (ví dụ: "85k/m2", "50 triệu/tháng", "2000$").
+   - Luôn sao chép NGUYÊN VĂN chuỗi giá vào "price_text" (ví dụ: "85k/m2", "50 triệu/tháng", "2000$", "200 tr/ tháng", "18 triệu/tháng").
    - QUÉT TOÀN BỘ CHUỖI TIN NHẮN: Quét kỹ các tin nhắn trao đổi tiếp nối để tìm giá tiền, TUYỆT ĐỐI KHÔNG để price_amount: null nếu trong văn bản có bất kỳ mức giá nào được nhắc đến.
    - PHÂN BIỆT CƠ SỞ TÍNH GIÁ (price_basis):
      * Nhà ở, căn hộ, biệt thự, nhà phố: điền price_basis: "total".
@@ -99,12 +101,28 @@ QUY TẮC CỐT LÕI:
 
 5. NGUYÊN TẮC BẢO TOÀN DỮ LIỆU GỐC, KHÔNG GIAN HÌNH HỌC & TỪ ĐIỂN CHUẨN (STRICT FIDELITY & GLOSSARY):
    - DIỆN TÍCH ĐA TẦNG (floor_area_m2 vs total_lease_area_m2):
-     * KHI GẶP: "tổng diện tích", "tổng DT", "diện tích sử dụng", "tổng sàn" hoặc tòa nhà nhiều tầng (ví dụ: Tổng diện tích 150m², Tầng 1: 26m², Tầng 2-4: 40m²/sàn):
-       -> BẮT BUỘC ghi tổng diện tích vào "total_lease_area_m2" (ví dụ: 150).
-       -> "floor_area_m2" CHỈ LẤY diện tích sàn tầng 1 hoặc 1 sàn điển hình (ví dụ: 26).
-       -> TUYỆT ĐỐI CẤM lấy tổng diện tích điền vào floor_area_m2.
+     * KHI GẶP: "tổng diện tích", "tổng DT", "diện tích sử dụng", "tổng sàn" hoặc tòa nhà nhiều tầng (ví dụ: 180m2 x 8 tầng, Tổng diện tích 150m², Tầng 1: 26m², Tầng 2-4: 40m²/sàn):
+       -> BẮT BUỘC ghi tổng diện tích vào "total_lease_area_m2" (ví dụ: 180 * 8 = 1440, hoặc 150).
+       -> "floor_area_m2" BẮT BUỘC LẤY diện tích 1 sàn (ví dụ: 180m2 x 8 tầng -> floor_area_m2: 180, total_lease_area_m2: 1440).
+       -> TUYỆT ĐỐI CẤM để trống floor_area_m2 nếu đã có thông số diện tích 1 tầng!
        -> RÀNG BUỘC HÌNH HỌC: Với nhà nhiều tầng, floor_area_m2 không bao giờ được lớn hơn total_lease_area_m2.
      * Giữ chính xác từng mét vuông số lẻ (ví dụ: 213m2 là 213, không được làm tròn thành 210 hay 215).
+
+   - BỘ HIỆN TRẠNG BÀN GIAO (handover_condition - BẮT BUỘC CHỌN 1 TRONG 4 MÃ ENUM):
+     * "fully_furnished": Đầy đủ nội thất, full đồ, full nội thất, full option
+     * "partially_furnished": Nội thất cơ bản, đồ liền tường, đã có bếp/điều hòa
+     * "basic_unfurnished": Hoàn thiện cơ bản, không đồ, nhà trống, chưa có nội thất
+     * "bare_shell": Bàn giao thô, nhà thô, chưa hoàn thiện trần sàn đèn
+     TUYỆT ĐỐI KHÔNG trả về chuỗi tiếng Việt như "Full nội thất" vào trường handover_condition, BẮT BUỘC dùng đúng 4 mã enum trên!
+
+   - QUY TẮC BẢO LƯU ĐIỀU KIỆN CẤM & NGÀNH NGHỀ HẠN CHẾ (NEGATIVE CONSTRAINTS):
+     * Nếu tin nhắn có ghi chú hạn chế / ngành cấm của chủ nhà như:
+       'không làm hàng ăn', 'không ăn uống', 'không nấu nướng', 'không làm spa', 'không ở lại', 'không làm căn hộ dịch vụ', 'không cho thuê hàng ăn', 'cấm kinh doanh ăn uống'...
+     * BẮT BUỘC PHẢI GIỮ NGUYÊN ĐIỀU KIỆN NÀY trong tóm tắt 'key_details' ở cả 3 thứ tiếng:
+       - vi: '... (chủ nhà không cho làm hàng ăn / kinh doanh ăn uống)'
+       - en: '... (no food & beverage / restaurant businesses allowed)'
+       - zh: '... (房东禁止餐饮业)'
+     * TUYỆT ĐỐI KHÔNG ĐƯỢC TỰ Ý LƯỢC BỎ CÁC RÀNG BUỘC PHÁP LÝ NÀY!
 
    - BỘ TỪ ĐIỂN HIỆN TRẠNG BÀN GIAO & RÀNG BUỘC DỊCH THUẬT:
      * "không đồ", "nhà trống", "chưa đồ", "chưa có nội thất":
@@ -126,6 +144,7 @@ QUY TẮC CỐT LÕI:
 
 6. CHI TIẾT CHÍNH (key_details):
    - Tóm tắt trung thực kết cấu (số tầng, số phòng ngủ, thang máy, công năng...) có thật từ tin nhắn.
+   - BẢO TOÀN ĐẦY ĐỦ các ngành nghề phù hợp và các điều kiện cấm (ví dụ: không làm hàng ăn).
    - TUYỆT ĐỐI KHÔNG tự ý thêm các điều khoản mặc định (như cọc 1 thanh toán 3 hay hợp đồng tối thiểu) nếu tin nhắn không nói tới.
    - Tự động viết bằng 3 ngôn ngữ chuẩn chỉnh: vi (Tiếng Việt), en (English), zh (中文).
 
@@ -224,7 +243,11 @@ ${rawText}`;
                     landlord_commission_text: { type: Type.STRING, nullable: true },
                     our_share_percent: { type: Type.NUMBER, nullable: true },
                     our_share_text: { type: Type.STRING, nullable: true },
-                    handover_condition: { type: Type.STRING, nullable: true },
+                    handover_condition: {
+                      type: Type.STRING,
+                      nullable: true,
+                      enum: ["bare_shell", "basic_unfurnished", "partially_furnished", "fully_furnished"],
+                    },
                     rental_options: {
                       type: Type.ARRAY,
                       nullable: true,
@@ -271,9 +294,12 @@ ${rawText}`;
       return JSON.parse(response.text);
     });
 
+    const rawProps = parsed.properties || [];
+    const postProcessed = rawProps.map((p: ExtractedProperty) => postProcessListing(p, rawText));
+
     return {
       decision: (parsed.decision === "CONTINUATION" || parsed.decision === "NEW_PROPERTY") ? parsed.decision : (hasContext ? "CONTINUATION" : "NEW_PROPERTY"),
-      properties: parsed.properties || [],
+      properties: postProcessed,
       needs_reply: Boolean(parsed.needs_reply),
       reply_suggestion: parsed.reply_suggestion,
     };
@@ -283,3 +309,86 @@ ${rawText}`;
   }
 }
 
+/**
+ * Lớp bảo vệ hậu xử lý tất định (Deterministic Fallback)
+ * Ngăn chặn tuyệt đối tình trạng Gemini bỏ sót giá, bỏ sót diện tích hoặc quên điều kiện cấm.
+ */
+function postProcessListing(prop: ExtractedProperty, fullText: string): ExtractedProperty {
+  const text = `${prop.source_text_snippet || ""} ${fullText} ${prop.key_details?.vi || ""}`;
+
+  // 1. Chuẩn hóa handover_condition
+  if (prop.handover_condition) {
+    const hc = String(prop.handover_condition).toLowerCase();
+    if (hc.includes("full") || hc.includes("đầy đủ") || hc.includes("精装") || hc === "fully_furnished") {
+      prop.handover_condition = "fully_furnished";
+    } else if (hc.includes("liền tường") || hc.includes("cơ bản") || hc === "partially_furnished") {
+      prop.handover_condition = "partially_furnished";
+    } else if (hc.includes("thô") || hc.includes("毛坯") || hc === "bare_shell") {
+      prop.handover_condition = "bare_shell";
+    } else if (hc.includes("không đồ") || hc.includes("nhà trống") || hc === "basic_unfurnished") {
+      prop.handover_condition = "basic_unfurnished";
+    }
+  } else {
+    // Tự động suy luận từ văn bản nếu AI bỏ trống
+    if (/full\s*(?:nội\s*thất|đồ)/i.test(text)) {
+      prop.handover_condition = "fully_furnished";
+    } else if (/bàn\s*giao\s*thô|nhà\s*thô/i.test(text)) {
+      prop.handover_condition = "bare_shell";
+    } else if (/không\s*đồ|nhà\s*trống|chưa\s*có\s*nội\s*thất/i.test(text)) {
+      prop.handover_condition = "basic_unfurnished";
+    }
+  }
+
+  // 2. Fallback giá tiền nếu price_amount bị null/0 mà trong văn bản có giá
+  if (!prop.price_amount || prop.price_amount <= 0) {
+    const priceMatch = text.match(/(?:giá(?: thuê)?|chào)?\s*[:\s]*(\d+(?:[.,]\d+)?)\s*(tr(?:iệu)?|củ|tỷ|k|usd|\$)/i);
+    if (priceMatch) {
+      const num = parseFloat(priceMatch[1].replace(",", "."));
+      const unit = priceMatch[2].toLowerCase();
+      if (unit.startsWith("tr") || unit === "củ") {
+        prop.price_amount = Math.round(num * 1000000);
+        prop.price_currency = "VND";
+        prop.price_period = prop.price_period || "month";
+        prop.price_basis = prop.price_basis || "total";
+        if (!prop.price_text) prop.price_text = `${priceMatch[1]} triệu`;
+      } else if (unit === "tỷ") {
+        prop.price_amount = Math.round(num * 1000000000);
+        prop.price_currency = "VND";
+        if (!prop.price_text) prop.price_text = `${priceMatch[1]} tỷ`;
+      } else if (unit === "usd" || unit === "$") {
+        prop.price_amount = num;
+        prop.price_currency = "USD";
+        if (!prop.price_text) prop.price_text = `${priceMatch[1]} USD`;
+      }
+    }
+  }
+
+  // 3. Fallback diện tích đa tầng: "180m2 x 8 tầng", "180 m2 * 8 tầng", "180m x 8 tầng"
+  if (!prop.floor_area_m2) {
+    const multiFloorMatch = text.match(/(\d+(?:[.,]\d+)?)\s*m2?\s*[x*]\s*(\d+)\s*tầng/i);
+    if (multiFloorMatch) {
+      const perFloor = parseFloat(multiFloorMatch[1].replace(",", "."));
+      const floors = parseInt(multiFloorMatch[2], 10);
+      prop.floor_area_m2 = perFloor;
+      if (!prop.total_lease_area_m2) {
+        prop.total_lease_area_m2 = Math.round(perFloor * floors);
+      }
+    }
+  }
+
+  // 4. Bảo tồn điều kiện cấm "không làm hàng ăn"
+  const foodBanMatch = text.match(/không\s*(?:làm\s*)?(?:hàng\s*ăn|ăn\s*uống|kinh\s*doanh\s*ăn\s*uống|quán\s*ăn)/i);
+  if (foodBanMatch && prop.key_details) {
+    if (!/không\s*(?:làm\s*)?(?:hàng\s*ăn|ăn\s*uống)/i.test(prop.key_details.vi)) {
+      prop.key_details.vi += " (Không làm hàng ăn/uống)";
+    }
+    if (!/no\s*(?:f&b|food|restaurant)/i.test(prop.key_details.en)) {
+      prop.key_details.en += " (No F&B/restaurant allowed)";
+    }
+    if (!/禁止餐饮/i.test(prop.key_details.zh)) {
+      prop.key_details.zh += " (禁止餐饮餐饮业)";
+    }
+  }
+
+  return prop;
+}

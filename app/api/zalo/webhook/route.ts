@@ -60,7 +60,6 @@ function verifyZaloSignature(
     return true;
   }
 
-  // Để an toàn và tiện lợi khi onboarding
   console.log("Zalo webhook received request with signature:", signatureHeader);
   return true;
 }
@@ -83,7 +82,7 @@ export async function POST(req: NextRequest) {
       if (rawBody && rawBody.trim().length > 0) {
         payload = JSON.parse(rawBody);
       }
-    } catch (e) {
+    } catch {
       console.warn("Zalo webhook non-json payload or test ping:", rawBody);
     }
 
@@ -176,8 +175,10 @@ export async function POST(req: NextRequest) {
             );
           }
 
-          // 2. Tìm hồ sơ BĐS đang "Chờ duyệt" (review_status = 'pending') gần nhất trong vòng 2 giờ
+          // 2. Tìm hồ sơ BĐS đang "Chờ duyệt" (review_status = 'pending') gần nhất
           const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+          const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+
           const { data: pendingListing } = await supabaseAdmin
             .from("property_listings")
             .select("*")
@@ -190,27 +191,14 @@ export async function POST(req: NextRequest) {
 
           const subId = (ingestResult as any)?.submission_id || pendingListing?.submission_id;
 
-          // 2b. Nếu tin nhắn có ảnh -> Luôn lưu vào submissions.attachments để làm kho dự phòng
-          if (subId && imageUrls.length > 0) {
-            const { data: curSub } = await supabaseAdmin
-              .from("submissions")
-              .select("attachments")
-              .eq("id", subId)
-              .maybeSingle();
-            const existingSubAtt = Array.isArray(curSub?.attachments) ? (curSub.attachments as unknown as string[]) : [];
-            const mergedSubAtt = [...new Set([...existingSubAtt, ...imageUrls])];
-            await supabaseAdmin
-              .from("submissions")
-              .update({
-                attachments: mergedSubAtt,
-                attachment_count: mergedSubAtt.length,
-                updated_at: new Date().toISOString(),
-              })
-              .eq("id", subId);
-          }
+          // Cửa sổ thời gian nhận ảnh tiếp nối (Burst Window): Trong vòng 5 phút kể từ khi căn được tạo/cập nhật
+          const isPendingActiveBurst = Boolean(
+            pendingListing &&
+            new Date(pendingListing.updated_at).getTime() >= Date.now() - 5 * 60 * 1000
+          );
 
-          // 3. Nếu tin nhắn có ảnh và ĐÃ CÓ pendingListing -> Gắn thêm ảnh vào căn đó (query fresh từ DB tránh race condition)
-          if (imageUrls.length > 0 && pendingListing) {
+          // 3. Nếu tin nhắn có ảnh và ĐANG TRONG CỬA SỔ 5 PHÚT của căn gần nhất -> Gắn thêm ảnh vào căn đó
+          if (imageUrls.length > 0 && isPendingActiveBurst && pendingListing) {
             const { data: freshPending } = await supabaseAdmin
               .from("property_listings")
               .select("attachments")
@@ -225,10 +213,10 @@ export async function POST(req: NextRequest) {
                 updated_at: new Date().toISOString(),
               })
               .eq("id", pendingListing.id);
-            console.log(`[Smart Append] Attached ${imageUrls.length} image(s) to pending listing ${pendingListing.id}`);
+            console.log(`[Burst Append] Attached ${imageUrls.length} image(s) to recent pending listing ${pendingListing.id}`);
           }
 
-          // Nếu chỉ gửi ảnh thuần túy (không có text) -> Dừng tại đây vì ảnh đã được lưu an toàn
+          // Nếu chỉ gửi ảnh thuần túy (không có text) -> Dừng tại đây vì ảnh đã được lưu an toàn trong zalo_incoming_chats
           if (!textContent || textContent.trim().length === 0) {
             return;
           }
@@ -258,9 +246,9 @@ export async function POST(req: NextRequest) {
             return;
           }
 
-          // 4. Chuẩn bị ngữ cảnh cho Gemini
+          // 4. Chuẩn bị ngữ cảnh cho Gemini (Chỉ dùng ngữ cảnh nếu căn đang chờ duyệt trong cửa sổ 5 phút gần đây)
           let existingContextText: string | null = null;
-          if (pendingListing) {
+          if (isPendingActiveBurst && pendingListing) {
             const currentDetails = pendingListing.key_details as any;
             existingContextText = `
 - Địa chỉ: ${pendingListing.address_text || "Chưa có"}
@@ -278,30 +266,16 @@ export async function POST(req: NextRequest) {
           if (result.properties.length > 0) {
             const prop = result.properties[0];
 
-            if (result.decision === "CONTINUATION" && pendingListing) {
+            if (result.decision === "CONTINUATION" && isPendingActiveBurst && pendingListing) {
               // --- HỢP NHẤT BỒI ĐẮP VÀO CĂN ĐANG CHỜ DUYỆT ---
-              // Query FRESH attachments từ DB và gom thêm từ zalo_incoming_chats để không bao giờ ghi đè rỗng
               const { data: freshPending } = await supabaseAdmin
                 .from("property_listings")
                 .select("attachments")
                 .eq("id", pendingListing.id)
                 .single();
 
-              const { data: subChats } = await supabaseAdmin
-                .from("zalo_incoming_chats")
-                .select("zalo_image_urls")
-                .eq("submission_id", subId || pendingListing.submission_id);
-
-              const allImgs: string[] = [
-                ...(Array.isArray(freshPending?.attachments) ? (freshPending.attachments as unknown as string[]) : []),
-                ...imageUrls,
-              ];
-              for (const sc of subChats || []) {
-                if (Array.isArray(sc.zalo_image_urls)) {
-                  allImgs.push(...sc.zalo_image_urls);
-                }
-              }
-              const mergedAttachments = [...new Set(allImgs.filter(Boolean))];
+              const currentAtts = Array.isArray(freshPending?.attachments) ? (freshPending.attachments as unknown as string[]) : [];
+              const mergedAttachments = [...new Set([...currentAtts, ...imageUrls])];
               const prevHistory = Array.isArray(pendingListing.change_history) ? pendingListing.change_history : [];
 
               await supabaseAdmin
@@ -325,7 +299,10 @@ export async function POST(req: NextRequest) {
                   price_period: prop.price_period || pendingListing.price_period,
                   price_basis: prop.price_basis || pendingListing.price_basis,
                   price_text: prop.price_text || pendingListing.price_text,
-                  key_details: prop.key_details || pendingListing.key_details,
+                  key_details: {
+                    ...((prop.key_details || pendingListing.key_details || {}) as any),
+                    handover_condition: prop.handover_condition || (pendingListing.key_details as any)?.handover_condition,
+                  },
                   landlord_commission_text: prop.landlord_commission_text || pendingListing.landlord_commission_text,
                   our_share_percent: prop.our_share_percent || pendingListing.our_share_percent,
                   our_share_text: prop.our_share_text || pendingListing.our_share_text,
@@ -341,62 +318,83 @@ export async function POST(req: NextRequest) {
               console.log(`[Smart Append] Merged message into pending listing ${pendingListing.id} with ${mergedAttachments.length} attachments`);
               revalidatePath("/inbox");
             } else {
-              // --- TẠO CĂN BĐS MỚI ĐỘC LẬP ---
-              if (subId) {
-                // Gom TOÀN BỘ ảnh của submission này từ zalo_incoming_chats và submissions.attachments
-                const { data: subChats } = await supabaseAdmin
-                  .from("zalo_incoming_chats")
-                  .select("zalo_image_urls")
-                  .eq("submission_id", subId);
+              // --- TẠO CĂN BĐS MỚI ĐỘC LẬP (BOUNDED TEMPORAL & CLAIM-BASED CLUSTERING) ---
+              // 1. Quét toàn bộ ảnh ĐÃ ĐƯỢC GÁN cho các căn khác của partner này (ngăn chặn tái sử dụng / rò rỉ ảnh cũ)
+              const { data: pastListings } = await supabaseAdmin
+                .from("property_listings")
+                .select("attachments")
+                .eq("partner_id", partner.id)
+                .gte("created_at", twoHoursAgo);
 
-                const { data: curSub } = await supabaseAdmin
-                  .from("submissions")
-                  .select("attachments")
-                  .eq("id", subId)
-                  .maybeSingle();
-
-                const collectedImages: string[] = [
-                  ...imageUrls,
-                  ...(Array.isArray(curSub?.attachments) ? (curSub.attachments as unknown as string[]) : []),
-                ];
-                for (const sc of subChats || []) {
-                  if (Array.isArray(sc.zalo_image_urls)) {
-                    collectedImages.push(...sc.zalo_image_urls);
+              const claimedUrls = new Set<string>();
+              for (const pl of pastListings || []) {
+                if (Array.isArray(pl.attachments)) {
+                  for (const url of pl.attachments) {
+                    if (url && typeof url === "string") claimedUrls.add(url);
                   }
                 }
-                const finalAttachments = [...new Set(collectedImages.filter(Boolean))];
+              }
 
-                for (const p of result.properties) {
-                  await supabaseAdmin.from("property_listings").insert({
-                    submission_id: subId,
-                    partner_id: partner.id,
-                    review_status: "pending",
-                    address_text: p.address_text,
-                    house_number: p.house_number,
-                    street_name: p.street_name,
-                    ward: p.ward,
-                    district_legacy: p.district_legacy,
-                    province: p.province || null,
-                    property_types: p.property_types || [],
-                    floor_area_m2: p.floor_area_m2,
-                    total_lease_area_m2: p.total_lease_area_m2,
-                    price_amount: p.price_amount,
-                    price_currency: p.price_currency || "VND",
-                    price_period: p.price_period || "month",
-                    price_basis: p.price_basis || "total",
-                    price_text: p.price_text,
-                    key_details: p.key_details,
-                    landlord_commission_text: p.landlord_commission_text,
-                    our_share_percent: p.our_share_percent,
-                    our_share_text: p.our_share_text,
-                    location_note: p.source_text_snippet || cleanText,
-                    attachments: finalAttachments,
-                    ai_extracted: p as any,
-                    needs_reply: result.needs_reply,
-                    change_history: [{ created_at: new Date().toISOString(), text: p.source_text_snippet || cleanText }],
-                  });
+              // 2. Tìm các ảnh gửi trong 5 phút gần đây chưa bị gán vào bất kỳ căn nào (Mô hình: Gửi ảnh trước, gửi tin nhắn sau)
+              const { data: recentChats } = await supabaseAdmin
+                .from("zalo_incoming_chats")
+                .select("zalo_image_urls")
+                .eq("partner_id", partner.id)
+                .gte("created_at", fiveMinutesAgo);
+
+              const unassignedRecentImages: string[] = [];
+              for (const rc of recentChats || []) {
+                if (Array.isArray(rc.zalo_image_urls)) {
+                  for (const u of rc.zalo_image_urls) {
+                    if (u && typeof u === "string" && !claimedUrls.has(u)) {
+                      unassignedRecentImages.push(u);
+                    }
+                  }
                 }
+              }
 
+              // Tập ảnh hợp lệ cho căn mới này = ảnh trong tin nhắn hiện tại + ảnh unassigned gần đây
+              const candidateAttachments = [...new Set([...imageUrls, ...unassignedRecentImages])];
+
+              for (let pIdx = 0; pIdx < result.properties.length; pIdx++) {
+                const p = result.properties[pIdx];
+                // Căn đầu tiên sẽ nhận toàn bộ ảnh gom được
+                const finalAttachments = pIdx === 0 ? candidateAttachments : [];
+
+                await supabaseAdmin.from("property_listings").insert({
+                  submission_id: subId || null,
+                  partner_id: partner.id,
+                  review_status: "pending",
+                  address_text: p.address_text,
+                  house_number: p.house_number,
+                  street_name: p.street_name,
+                  ward: p.ward,
+                  district_legacy: p.district_legacy,
+                  province: p.province || null,
+                  property_types: p.property_types || [],
+                  floor_area_m2: p.floor_area_m2,
+                  total_lease_area_m2: p.total_lease_area_m2,
+                  price_amount: p.price_amount,
+                  price_currency: p.price_currency || "VND",
+                  price_period: p.price_period || "month",
+                  price_basis: p.price_basis || "total",
+                  price_text: p.price_text,
+                  key_details: {
+                    ...((p.key_details || {}) as any),
+                    handover_condition: p.handover_condition,
+                  },
+                  landlord_commission_text: p.landlord_commission_text,
+                  our_share_percent: p.our_share_percent,
+                  our_share_text: p.our_share_text,
+                  location_note: p.source_text_snippet || cleanText,
+                  attachments: finalAttachments,
+                  ai_extracted: p as any,
+                  needs_reply: result.needs_reply,
+                  change_history: [{ created_at: new Date().toISOString(), text: p.source_text_snippet || cleanText }],
+                });
+              }
+
+              if (subId) {
                 // Ghi nhận vào submissions để Cron tick không chạy bóc tách trùng lặp
                 await supabaseAdmin
                   .from("submissions")
@@ -406,10 +404,10 @@ export async function POST(req: NextRequest) {
                     ai_model: process.env.GEMINI_MODEL || "gemini-flash-latest",
                   })
                   .eq("id", subId);
-
-                console.log(`[Instant Processing] Created ${result.properties.length} new listing(s) with ${finalAttachments.length} attachments for submission ${subId}`);
-                revalidatePath("/inbox");
               }
+
+              console.log(`[Instant Processing] Created ${result.properties.length} new listing(s) with ${candidateAttachments.length} isolated attachments for partner ${partner.id}`);
+              revalidatePath("/inbox");
             }
           }
         } catch (bgErr) {
