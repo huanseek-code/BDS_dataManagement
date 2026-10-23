@@ -16,9 +16,25 @@ export async function POST(req: NextRequest) {
     const supabase = createAdminClient();
 
     if (action === "approve") {
+      // Đảm bảo không bao giờ bị thất lạc ảnh từ tin nhắn Zalo gốc
+      let attachmentsToPersist = Array.isArray(propertyData?.attachments) ? propertyData.attachments : [];
+      if (attachmentsToPersist.length === 0) {
+        const { data: currentListing } = await supabase
+          .from("property_listings")
+          .select("attachments")
+          .eq("id", listingId)
+          .single();
+        if (currentListing && Array.isArray(currentListing.attachments)) {
+          attachmentsToPersist = currentListing.attachments;
+        }
+      }
+
       const { data, error } = await supabase.rpc("approve_listing", {
         p_listing_id: listingId,
-        p_property_data: propertyData || {},
+        p_property_data: {
+          ...(propertyData || {}),
+          attachments: attachmentsToPersist,
+        },
       });
 
       if (error) {

@@ -42,9 +42,11 @@ export default async function PropertiesPage() {
         created_at,
         reviewed_at,
         location_note,
+        change_history,
         submissions(
           first_msg_at,
-          last_msg_at
+          last_msg_at,
+          raw_text
         ),
         partners(
           display_name,
@@ -220,7 +222,16 @@ export default async function PropertiesPage() {
             our_share_percent: p.our_share_percent,
             our_share_text: p.our_share_text,
             attachments: Array.isArray(p.attachments) ? p.attachments : [],
-            raw_text: listing?.location_note || null,
+            rental_options: Array.isArray(p.rental_options)
+              ? p.rental_options
+              : Array.isArray(p.key_details?.rental_options)
+              ? p.key_details.rental_options
+              : [],
+            raw_text:
+              listing?.location_note ||
+              listing?.submissions?.raw_text ||
+              (Array.isArray(listing?.change_history) && listing.change_history[0]?.text) ||
+              null,
           };
         })
       : demoData;

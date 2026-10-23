@@ -27,6 +27,19 @@ export interface ExtractedProperty {
   landlord_commission_text: string | null;
   our_share_percent: number | null;
   our_share_text: string | null;
+  handover_condition?: string | null;
+  rental_options?: {
+    name: string;
+    rentable_area_m2?: number | null;
+    price_amount?: number | null;
+    price_currency?: string;
+    price_basis?: string;
+    price_period?: string;
+    management_fee_text?: string | null;
+    electricity_text?: string | null;
+    water_text?: string | null;
+    note?: string | null;
+  }[];
 }
 
 export interface ExtractionResult {
@@ -62,15 +75,17 @@ QUY TẮC CỐT LÕI:
      * Các tỉnh thành khác: Hải Phòng, Đà Nẵng, Quảng Ninh, Cần Thơ, Bắc Ninh, Hưng Yên...
    - QUY TẮC CẤM SUY ĐOÁN BỪA: Nếu tin nhắn hoàn toàn không có bất kỳ dữ kiện địa danh nào xác định được tỉnh/thành phố, trả về province: null. TUYỆT ĐỐI KHÔNG tự ý gán bừa là "TP. Hồ Chí Minh" hay bất kỳ tỉnh nào.
 
-3. QUY ĐỔI GIÁ TIỀN & ĐƠN VỊ:
+3. QUY ĐỔI GIÁ TIỀN & ĐƠN VỊ (QUÉT XUYÊN SUỐT HỘI THOẠI):
    - "80 ạ", "80 tr", "80 triệu" -> price_amount: 80000000, price_currency: "VND", price_basis: "total", price_period: "month"
+   - "50 triệu/tháng", "50tr", "chủ chốt 50tr", "thuê 50 củ" -> price_amount: 50000000, price_currency: "VND", price_basis: "total", price_period: "month"
    - "16,5 triệu", "16.5tr" -> price_amount: 16500000, price_currency: "VND", price_basis: "total", price_period: "month"
    - "12 triệu" -> price_amount: 12000000, price_currency: "VND", price_basis: "total", price_period: "month"
    - "2000$", "2000 usd" -> price_amount: 2000, price_currency: "USD", price_basis: "total", price_period: "month"
    - "12 tỷ 5", "12.5 tỷ" -> price_amount: 12500000000, price_currency: "VND", price_basis: "total", price_period: "one_time"
    - "85000đ/m2", "85k/m2" -> price_amount: 85000, price_currency: "VND", price_basis: "per_m2", price_period: "month"
    - "4.5 USD/m2", "5$/m2" -> price_amount: 4.5, price_currency: "USD", price_basis: "per_m2", price_period: "month"
-   - Luôn sao chép NGUYÊN VĂN chuỗi giá vào "price_text" (ví dụ: "85k/m2", "16,5 triệu", "2000$").
+   - Luôn sao chép NGUYÊN VĂN chuỗi giá vào "price_text" (ví dụ: "85k/m2", "50 triệu/tháng", "2000$").
+   - QUÉT TOÀN BỘ CHUỖI TIN NHẮN: Quét kỹ các tin nhắn trao đổi tiếp nối để tìm giá tiền, TUYỆT ĐỐI KHÔNG để price_amount: null nếu trong văn bản có bất kỳ mức giá nào được nhắc đến.
    - PHÂN BIỆT CƠ SỞ TÍNH GIÁ (price_basis):
      * Nhà ở, căn hộ, biệt thự, nhà phố: điền price_basis: "total".
      * Kho bãi, nhà xưởng, đất, văn phòng cho thuê theo mét vuông: BẮT BUỘC điền price_basis: "per_m2".
@@ -80,16 +95,34 @@ QUY TẮC CỐT LÕI:
    - Chung cư / căn hộ / duplex / penthouse -> ["apartment"]
    - Kho / xưởng -> ["warehouse", "factory"]
    - Mặt bằng kinh doanh / văn phòng -> ["retail", "office"]
+   - BẮT BUỘC phải gán ít nhất 1 loại hình phù hợp, TUYỆT ĐỐI KHÔNG để mảng rỗng [].
 
-5. NGUYÊN TẮC BẢO TOÀN DỮ LIỆU GỐC & CẤM PHỎNG ĐOÁN BỪA (STRICT FIDELITY):
-   - ĐIỀU KHOẢN HỢP ĐỒNG (lease_term_text):
-     * Nếu tin nhắn ghi "hợp đồng 1 năm" hay "hđ 1 năm", ghi CHÍNH XÁC là "Hợp đồng 1 năm" (Contract: 1 year / 租期: 1年).
-     * TUYỆT ĐỐI CẤM tự ý thêm chữ "tối thiểu", "ít nhất", "từ 1 năm trở lên" nếu tin nhắn gốc không có chữ "tối thiểu".
+5. NGUYÊN TẮC BẢO TOÀN DỮ LIỆU GỐC, KHÔNG GIAN HÌNH HỌC & TỪ ĐIỂN CHUẨN (STRICT FIDELITY & GLOSSARY):
+   - DIỆN TÍCH ĐA TẦNG (floor_area_m2 vs total_lease_area_m2):
+     * KHI GẶP: "tổng diện tích", "tổng DT", "diện tích sử dụng", "tổng sàn" hoặc tòa nhà nhiều tầng (ví dụ: Tổng diện tích 150m², Tầng 1: 26m², Tầng 2-4: 40m²/sàn):
+       -> BẮT BUỘC ghi tổng diện tích vào "total_lease_area_m2" (ví dụ: 150).
+       -> "floor_area_m2" CHỈ LẤY diện tích sàn tầng 1 hoặc 1 sàn điển hình (ví dụ: 26).
+       -> TUYỆT ĐỐI CẤM lấy tổng diện tích điền vào floor_area_m2.
+       -> RÀNG BUỘC HÌNH HỌC: Với nhà nhiều tầng, floor_area_m2 không bao giờ được lớn hơn total_lease_area_m2.
+     * Giữ chính xác từng mét vuông số lẻ (ví dụ: 213m2 là 213, không được làm tròn thành 210 hay 215).
+
+   - BỘ TỪ ĐIỂN HIỆN TRẠNG BÀN GIAO & RÀNG BUỘC DỊCH THUẬT:
+     * "không đồ", "nhà trống", "chưa đồ", "chưa có nội thất":
+       - vi: "Hoàn thiện cơ bản, không đồ (chưa có nội thất rời)"
+       - zh: "简装空房 (无家具)"
+       - en: "Basic finish, unfurnished (no loose furniture)"
+       - CẤM TUYỆT ĐỐI DỊCH THÀNH "bàn giao thô" HOẶC "毛坯" HOẶC "bare shell" (vì nhà đã xong sàn trần đèn vệ sinh).
+     * "bàn giao thô":
+       - vi: "Bàn giao thô" | zh: "毛坯交付" | en: "Bare shell"
+     * "đầy đủ đồ", "full đồ", "full nội thất":
+       - vi: "Đầy đủ nội thất" | zh: "全配精装" | en: "Fully furnished"
+     * "hợp đồng 1 năm", "hđ 1 năm":
+       - vi: "Hợp đồng 1 năm" | zh: "租期 1 年" | en: "1-year contract"
+       - TUYỆT ĐỐI CẤM tự ý thêm chữ "tối thiểu", "ít nhất", "至少", "minimum".
+
    - ĐỊA CHỈ & VỊ TRÍ (address_text):
      * Giữ nguyên văn các cụm từ địa danh trong tin nhắn gốc (ví dụ: "Ciputra L7, Tây Hồ", "ngõ 12 Vĩnh Hưng").
      * KHÔNG tự ý suy đoán thêm số nhà, tên ngõ hoặc phường xã nếu không được nhắc đến.
-   - DIỆN TÍCH (floor_area_m2, total_lease_area_m2):
-     * Giữ chính xác từng mét vuông số lẻ (ví dụ: 213m2 là 213, không được làm tròn thành 210 hay 215).
 
 6. CHI TIẾT CHÍNH (key_details):
    - Tóm tắt trung thực kết cấu (số tầng, số phòng ngủ, thang máy, công năng...) có thật từ tin nhắn.
@@ -191,6 +224,27 @@ ${rawText}`;
                     landlord_commission_text: { type: Type.STRING, nullable: true },
                     our_share_percent: { type: Type.NUMBER, nullable: true },
                     our_share_text: { type: Type.STRING, nullable: true },
+                    handover_condition: { type: Type.STRING, nullable: true },
+                    rental_options: {
+                      type: Type.ARRAY,
+                      nullable: true,
+                      items: {
+                        type: Type.OBJECT,
+                        properties: {
+                          name: { type: Type.STRING },
+                          rentable_area_m2: { type: Type.NUMBER, nullable: true },
+                          price_amount: { type: Type.NUMBER, nullable: true },
+                          price_currency: { type: Type.STRING, nullable: true },
+                          price_basis: { type: Type.STRING, nullable: true },
+                          price_period: { type: Type.STRING, nullable: true },
+                          management_fee_text: { type: Type.STRING, nullable: true },
+                          electricity_text: { type: Type.STRING, nullable: true },
+                          water_text: { type: Type.STRING, nullable: true },
+                          note: { type: Type.STRING, nullable: true },
+                        },
+                        required: ["name"],
+                      },
+                    },
                   },
                   required: [
                     "address_text",

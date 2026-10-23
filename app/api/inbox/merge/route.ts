@@ -72,7 +72,61 @@ ${sourceText}
 
     const mergedProp = aiResult.properties[0];
 
-    // 4. Cập nhật targetListing với dữ liệu hoàn chỉnh
+    // 4. Lưu bản sao lưu snapshot trước khi gộp để hỗ trợ Hoàn tác (Undo)
+    const currentHistory = Array.isArray(targetListing.change_history) ? targetListing.change_history : [];
+    const mergeSnapshot = {
+      event: "MERGE_SNAPSHOT",
+      timestamp: new Date().toISOString(),
+      source_listing_id: sourceListingId,
+      target_snapshot: {
+        address_text: targetListing.address_text,
+        house_number: targetListing.house_number,
+        street_name: targetListing.street_name,
+        ward: targetListing.ward,
+        district_legacy: targetListing.district_legacy,
+        province: targetListing.province,
+        property_types: targetListing.property_types,
+        floor_area_m2: targetListing.floor_area_m2,
+        total_lease_area_m2: targetListing.total_lease_area_m2,
+        price_amount: targetListing.price_amount,
+        price_currency: targetListing.price_currency,
+        price_period: targetListing.price_period,
+        price_basis: targetListing.price_basis,
+        price_text: targetListing.price_text,
+        key_details: targetListing.key_details,
+        landlord_commission_text: targetListing.landlord_commission_text,
+        our_share_percent: targetListing.our_share_percent,
+        our_share_text: targetListing.our_share_text,
+        attachments: targetListing.attachments,
+        ai_extracted: targetListing.ai_extracted,
+      },
+      source_snapshot: {
+        id: sourceListing.id,
+        address_text: sourceListing.address_text,
+        house_number: sourceListing.house_number,
+        street_name: sourceListing.street_name,
+        ward: sourceListing.ward,
+        district_legacy: sourceListing.district_legacy,
+        province: sourceListing.province,
+        property_types: sourceListing.property_types,
+        floor_area_m2: sourceListing.floor_area_m2,
+        total_lease_area_m2: sourceListing.total_lease_area_m2,
+        price_amount: sourceListing.price_amount,
+        price_currency: sourceListing.price_currency,
+        price_period: sourceListing.price_period,
+        price_basis: sourceListing.price_basis,
+        price_text: sourceListing.price_text,
+        key_details: sourceListing.key_details,
+        landlord_commission_text: sourceListing.landlord_commission_text,
+        our_share_percent: sourceListing.our_share_percent,
+        our_share_text: sourceListing.our_share_text,
+        attachments: sourceListing.attachments,
+        ai_extracted: sourceListing.ai_extracted,
+        review_status: sourceListing.review_status,
+      },
+    };
+
+    // 5. Cập nhật targetListing với dữ liệu hoàn chỉnh kèm snapshot
     const { data: updated, error: updateErr } = await supabaseAdmin
       .from("property_listings")
       .update({
@@ -98,6 +152,7 @@ ${sourceText}
         our_share_text: mergedProp.our_share_text || targetListing.our_share_text,
         attachments: mergedAttachments,
         ai_extracted: mergedProp as any,
+        change_history: [...currentHistory, mergeSnapshot],
         needs_reply: aiResult.needs_reply,
         updated_at: new Date().toISOString(),
       })
@@ -109,11 +164,11 @@ ${sourceText}
       throw updateErr;
     }
 
-    // 5. Đánh dấu sourceListing là đã gộp (đổi status = 'rejected' hoặc xóa)
+    // 6. Đánh dấu sourceListing là đã gộp (status = 'merged')
     await supabaseAdmin
       .from("property_listings")
       .update({
-        review_status: "rejected",
+        review_status: "merged",
         reject_reason: `Đã gộp vào nguồn BĐS ${targetListingId}`,
         updated_at: new Date().toISOString(),
       })
