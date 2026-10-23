@@ -188,9 +188,35 @@ export async function POST(req: NextRequest) {
             .limit(1)
             .maybeSingle();
 
-          // 3. Nếu chỉ gửi ảnh và đã có pendingListing -> Gắn thêm ảnh vào căn đó
-          if ((!textContent || textContent.trim().length === 0) && imageUrls.length > 0 && pendingListing) {
-            const currentAttachments = Array.isArray(pendingListing.attachments) ? pendingListing.attachments : [];
+          const subId = (ingestResult as any)?.submission_id || pendingListing?.submission_id;
+
+          // 2b. Nếu tin nhắn có ảnh -> Luôn lưu vào submissions.attachments để làm kho dự phòng
+          if (subId && imageUrls.length > 0) {
+            const { data: curSub } = await supabaseAdmin
+              .from("submissions")
+              .select("attachments")
+              .eq("id", subId)
+              .maybeSingle();
+            const existingSubAtt = Array.isArray(curSub?.attachments) ? (curSub.attachments as unknown as string[]) : [];
+            const mergedSubAtt = [...new Set([...existingSubAtt, ...imageUrls])];
+            await supabaseAdmin
+              .from("submissions")
+              .update({
+                attachments: mergedSubAtt,
+                attachment_count: mergedSubAtt.length,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", subId);
+          }
+
+          // 3. Nếu tin nhắn có ảnh và ĐÃ CÓ pendingListing -> Gắn thêm ảnh vào căn đó (query fresh từ DB tránh race condition)
+          if (imageUrls.length > 0 && pendingListing) {
+            const { data: freshPending } = await supabaseAdmin
+              .from("property_listings")
+              .select("attachments")
+              .eq("id", pendingListing.id)
+              .single();
+            const currentAttachments = Array.isArray(freshPending?.attachments) ? freshPending.attachments : [];
             const mergedAttachments = [...new Set([...currentAttachments, ...imageUrls])];
             await supabaseAdmin
               .from("property_listings")
@@ -200,6 +226,10 @@ export async function POST(req: NextRequest) {
               })
               .eq("id", pendingListing.id);
             console.log(`[Smart Append] Attached ${imageUrls.length} image(s) to pending listing ${pendingListing.id}`);
+          }
+
+          // Nếu chỉ gửi ảnh thuần túy (không có text) -> Dừng tại đây vì ảnh đã được lưu an toàn
+          if (!textContent || textContent.trim().length === 0) {
             return;
           }
 
@@ -233,8 +263,28 @@ export async function POST(req: NextRequest) {
 
             if (result.decision === "CONTINUATION" && pendingListing) {
               // --- HỢP NHẤT BỒI ĐẮP VÀO CĂN ĐANG CHỜ DUYỆT ---
-              const currentAttachments = Array.isArray(pendingListing.attachments) ? pendingListing.attachments : [];
-              const mergedAttachments = [...new Set([...currentAttachments, ...imageUrls])];
+              // Query FRESH attachments từ DB và gom thêm từ zalo_incoming_chats để không bao giờ ghi đè rỗng
+              const { data: freshPending } = await supabaseAdmin
+                .from("property_listings")
+                .select("attachments")
+                .eq("id", pendingListing.id)
+                .single();
+
+              const { data: subChats } = await supabaseAdmin
+                .from("zalo_incoming_chats")
+                .select("zalo_image_urls")
+                .eq("submission_id", subId || pendingListing.submission_id);
+
+              const allImgs: string[] = [
+                ...(Array.isArray(freshPending?.attachments) ? (freshPending.attachments as unknown as string[]) : []),
+                ...imageUrls,
+              ];
+              for (const sc of subChats || []) {
+                if (Array.isArray(sc.zalo_image_urls)) {
+                  allImgs.push(...sc.zalo_image_urls);
+                }
+              }
+              const mergedAttachments = [...new Set(allImgs.filter(Boolean))];
               const prevHistory = Array.isArray(pendingListing.change_history) ? pendingListing.change_history : [];
 
               await supabaseAdmin
@@ -271,11 +321,34 @@ export async function POST(req: NextRequest) {
                 })
                 .eq("id", pendingListing.id);
 
-              console.log(`[Smart Append] Merged message into pending listing ${pendingListing.id}`);
+              console.log(`[Smart Append] Merged message into pending listing ${pendingListing.id} with ${mergedAttachments.length} attachments`);
+              revalidatePath("/inbox");
             } else {
               // --- TẠO CĂN BĐS MỚI ĐỘC LẬP ---
-              const subId = (ingestResult as any)?.submission_id || pendingListing?.submission_id;
               if (subId) {
+                // Gom TOÀN BỘ ảnh của submission này từ zalo_incoming_chats và submissions.attachments
+                const { data: subChats } = await supabaseAdmin
+                  .from("zalo_incoming_chats")
+                  .select("zalo_image_urls")
+                  .eq("submission_id", subId);
+
+                const { data: curSub } = await supabaseAdmin
+                  .from("submissions")
+                  .select("attachments")
+                  .eq("id", subId)
+                  .maybeSingle();
+
+                const collectedImages: string[] = [
+                  ...imageUrls,
+                  ...(Array.isArray(curSub?.attachments) ? (curSub.attachments as unknown as string[]) : []),
+                ];
+                for (const sc of subChats || []) {
+                  if (Array.isArray(sc.zalo_image_urls)) {
+                    collectedImages.push(...sc.zalo_image_urls);
+                  }
+                }
+                const finalAttachments = [...new Set(collectedImages.filter(Boolean))];
+
                 for (const p of result.properties) {
                   await supabaseAdmin.from("property_listings").insert({
                     submission_id: subId,
@@ -300,7 +373,7 @@ export async function POST(req: NextRequest) {
                     our_share_percent: p.our_share_percent,
                     our_share_text: p.our_share_text,
                     location_note: p.source_text_snippet || cleanText,
-                    attachments: imageUrls,
+                    attachments: finalAttachments,
                     ai_extracted: p as any,
                     needs_reply: result.needs_reply,
                     change_history: [{ created_at: new Date().toISOString(), text: p.source_text_snippet || cleanText }],
@@ -317,7 +390,7 @@ export async function POST(req: NextRequest) {
                   })
                   .eq("id", subId);
 
-                console.log(`[Instant Processing] Created ${result.properties.length} new listing(s) for submission ${subId}`);
+                console.log(`[Instant Processing] Created ${result.properties.length} new listing(s) with ${finalAttachments.length} attachments for submission ${subId}`);
                 revalidatePath("/inbox");
               }
             }
