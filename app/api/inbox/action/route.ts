@@ -4,7 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(req: NextRequest) {
   try {
-    const { action, listingId, propertyData } = await req.json();
+    const body = await req.json();
+    const { action, listingId, propertyData, attachments } = body;
 
     if (!listingId || !action) {
       return NextResponse.json(
@@ -63,6 +64,22 @@ export async function POST(req: NextRequest) {
       }
 
       revalidatePath("/inbox");
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === "update_attachments") {
+      const newAttachments = Array.isArray(attachments) ? attachments : [];
+      const { error } = await supabase
+        .from("property_listings")
+        .update({
+          attachments: newAttachments,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", listingId);
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
       return NextResponse.json({ success: true });
     }
 

@@ -241,6 +241,23 @@ export async function POST(req: NextRequest) {
             return;
           }
 
+          // 3b. Kiểm tra chống gửi lặp tin nhắn trong vòng 90 giây (Debounce / Deduplication)
+          const ninetySecondsAgo = new Date(Date.now() - 90 * 1000).toISOString();
+          const { data: duplicateChat } = await supabaseAdmin
+            .from("zalo_incoming_chats")
+            .select("id")
+            .eq("partner_id", partner.id)
+            .eq("text_content", textContent)
+            .gte("created_at", ninetySecondsAgo)
+            .neq("zalo_msg_id", zaloMsgId)
+            .limit(1)
+            .maybeSingle();
+
+          if (duplicateChat) {
+            console.log(`[Debounce] Bỏ qua tin nhắn trùng lặp trong 90s từ đối tác ${partner.id} để tiết kiệm chi phí Gemini.`);
+            return;
+          }
+
           // 4. Chuẩn bị ngữ cảnh cho Gemini
           let existingContextText: string | null = null;
           if (pendingListing) {

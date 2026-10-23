@@ -54,6 +54,7 @@ export interface PropertyRow {
     display_name?: string | null;
     phone?: string | null;
     first_seen_at?: string | null;
+    note?: string | null;
   } | null;
   zalo_sender_name?: string | null;
   zalo_msg_time?: string | null;
@@ -521,9 +522,18 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
 
                       {/* 8. Đối tác cung cấp */}
                       <td className="p-3 font-medium text-slate-800">
-                        <div>{row.primary_partner?.display_name || "—"}</div>
+                        <div className="flex items-center gap-1.5">
+                          {row.primary_partner?.note?.startsWith("avatar:") && (
+                            <img
+                              src={row.primary_partner.note.slice(7)}
+                              alt=""
+                              className="w-5 h-5 rounded-full object-cover border border-slate-200 shrink-0"
+                            />
+                          )}
+                          <div>{row.primary_partner?.display_name || "—"}</div>
+                        </div>
                         {row.primary_partner?.phone && (
-                          <div className="text-[11px] text-slate-500">{row.primary_partner.phone}</div>
+                          <div className="text-[11px] text-slate-500 pl-6.5">{row.primary_partner.phone}</div>
                         )}
                       </td>
 

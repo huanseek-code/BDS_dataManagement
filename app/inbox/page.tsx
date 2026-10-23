@@ -14,7 +14,8 @@ export default async function InboxPage() {
       partner:partners(
         display_name,
         zalo_user_id,
-        phone
+        phone,
+        note
       ),
       submission:submissions(
         id,

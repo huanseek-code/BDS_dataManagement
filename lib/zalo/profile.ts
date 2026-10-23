@@ -80,24 +80,27 @@ export async function fetchAndSyncZaloUserProfile(zaloUserId: string, partnerId?
 
     const data = await res.json();
     const displayName = data?.data?.display_name || data?.data?.user_alias || null;
+    const avatarUrl = data?.data?.avatars?.["120"] || data?.data?.avatar || null;
 
     if (displayName) {
       const supabase = createAdminClient();
+      const updatePayload: { display_name: string; updated_at: string; note?: string | null } = {
+        display_name: displayName,
+        updated_at: new Date().toISOString(),
+      };
+      if (avatarUrl) {
+        updatePayload.note = `avatar:${avatarUrl}`;
+      }
+
       if (partnerId) {
         await supabase
           .from("partners")
-          .update({
-            display_name: displayName,
-            updated_at: new Date().toISOString(),
-          })
+          .update(updatePayload)
           .eq("id", partnerId);
       } else {
         await supabase
           .from("partners")
-          .update({
-            display_name: displayName,
-            updated_at: new Date().toISOString(),
-          })
+          .update(updatePayload)
           .eq("zalo_user_id", zaloUserId);
       }
       return displayName;

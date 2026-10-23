@@ -136,6 +136,8 @@
     "confirmMergeBtn": "Confirm Merge with AI",
     "cancel": "Cancel",
     "attachedImages": "Attached Photos from Zalo",
+    "uploadMorePhotos": "Upload photos",
+    "uploading": "Uploading...",
     "noImages": "No photos attached",
     "removeImage": "Remove photo",
     "handoverCondition": "Handover Condition",

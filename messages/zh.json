@@ -136,6 +136,8 @@
     "confirmMergeBtn": "确认由AI整合合并",
     "cancel": "取消",
     "attachedImages": "来自Zalo的附带图片",
+    "uploadMorePhotos": "上传照片",
+    "uploading": "上传中...",
     "noImages": "暂无附带图片",
     "removeImage": "移除此图",
     "handoverCondition": "交付现状",

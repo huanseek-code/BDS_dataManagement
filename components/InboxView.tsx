@@ -27,6 +27,8 @@ import {
   ChevronLeft,
   ChevronRight,
   ShieldAlert,
+  Upload,
+  RefreshCw,
 } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
 
@@ -59,10 +61,65 @@ export function InboxView({
   const [showFullChat, setShowFullChat] = useState(false);
   const [activeLightboxImg, setActiveLightboxImg] = useState<string | null>(null);
   const [mergeModalSibling, setMergeModalSibling] = useState<any | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
 
   const [formState, setFormState] = useState<any>(
     initialListings[0] ? extractFormData(initialListings[0]) : null
   );
+
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    router.refresh();
+    setTimeout(() => setIsRefreshing(false), 800);
+  };
+
+  const handleUploadPhotos = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploadingPhotos(true);
+    try {
+      const fd = new FormData();
+      for (let i = 0; i < files.length; i++) {
+        fd.append("files", files[i]);
+      }
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: fd,
+      });
+
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.urls) && data.urls.length > 0) {
+        const currentAtt = Array.isArray(formState.attachments) ? formState.attachments : [];
+        const updated = [...currentAtt, ...data.urls];
+        setFormState({
+          ...formState,
+          attachments: updated,
+        });
+
+        if (selectedListing?.id) {
+          fetch("/api/inbox/action", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "update_attachments",
+              listingId: selectedListing.id,
+              attachments: updated,
+            }),
+          }).catch(() => {});
+        }
+      } else {
+        alert("Upload error: " + (data.error || "Failed to upload"));
+      }
+    } catch (err: any) {
+      alert("Upload failed: " + err.message);
+    } finally {
+      setUploadingPhotos(false);
+      e.target.value = "";
+    }
+  };
 
   function extractFormData(listing: any) {
     const rawAttachments = Array.isArray(listing.attachments)
@@ -335,6 +392,16 @@ export function InboxView({
             <h2 className="font-bold text-slate-900 text-sm">
               {t("inbox.title")} ({listings.length})
             </h2>
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:text-sky-700 bg-slate-100 hover:bg-sky-50 rounded-lg transition border border-slate-200 cursor-pointer disabled:opacity-50"
+              title={t("common.refresh")}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin text-sky-600" : ""}`} />
+              <span>{t("common.refresh")}</span>
+            </button>
           </div>
 
           <div className="space-y-2.5 max-h-[780px] overflow-y-auto pr-1">
@@ -359,7 +426,15 @@ export function InboxView({
                   >
                     <div className="flex items-center justify-between">
                       <div className="font-semibold text-xs text-slate-900 flex items-center gap-1.5">
-                        <User className="w-3.5 h-3.5 text-sky-600" />
+                        {item.partner?.note?.startsWith("avatar:") ? (
+                          <img
+                            src={item.partner.note.slice(7)}
+                            alt=""
+                            className="w-4 h-4 rounded-full object-cover border border-slate-200"
+                          />
+                        ) : (
+                          <User className="w-3.5 h-3.5 text-sky-600" />
+                        )}
                         <span>{item.partner?.display_name || t("inbox.partnerZalo")}</span>
                       </div>
                       <span className="text-[10px] text-slate-400 font-mono">
@@ -407,6 +482,15 @@ export function InboxView({
               <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
                 <div>
                   <div className="flex items-center gap-2">
+                    {selectedListing.partner?.note?.startsWith("avatar:") ? (
+                      <img
+                        src={selectedListing.partner.note.slice(7)}
+                        alt=""
+                        className="w-7 h-7 rounded-full object-cover border border-slate-200 shadow-xs"
+                      />
+                    ) : (
+                      <User className="w-5 h-5 text-sky-600" />
+                    )}
                     <h3 className="font-bold text-slate-900 text-base">
                       {selectedListing.partner?.display_name || t("inbox.partnerZalo")}
                     </h3>
@@ -557,6 +641,24 @@ export function InboxView({
                           {formState.attachments?.length || 0}
                         </span>
                       </span>
+
+                      {/* Nút tải thêm ảnh thủ công từ máy tính */}
+                      <label className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-sky-700 bg-white hover:bg-sky-50 border border-sky-200 rounded-lg shadow-2xs cursor-pointer transition">
+                        {uploadingPhotos ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-600" />
+                        ) : (
+                          <Upload className="w-3.5 h-3.5 text-sky-600" />
+                        )}
+                        <span>{uploadingPhotos ? t("inbox.uploading") : t("inbox.uploadMorePhotos")}</span>
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/*"
+                          disabled={uploadingPhotos}
+                          onChange={handleUploadPhotos}
+                          className="hidden"
+                        />
+                      </label>
                     </div>
 
                     {formState.attachments && formState.attachments.length > 0 ? (

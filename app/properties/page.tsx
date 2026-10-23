@@ -35,7 +35,8 @@ export default async function PropertiesPage() {
       primary_partner:partners(
         display_name,
         phone,
-        first_seen_at
+        first_seen_at,
+        note
       ),
       property_listings(
         id,
