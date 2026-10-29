@@ -9,7 +9,6 @@ import {
   SlidersHorizontal,
   FileSpreadsheet,
   ExternalLink,
-  Image as ImageIcon,
   MessageSquare,
   Building,
   Edit3,
@@ -89,7 +88,6 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
   const [search, setSearch] = useState("");
   const [selectedType, setSelectedType] = useState<string>("all");
   const [showBilingual, setShowBilingual] = useState<boolean>(true);
-  const [previewImages, setPreviewImages] = useState<string[] | null>(null);
 
   // Phân trang & kích thước trang
   const [pageSize, setPageSize] = useState<number>(20);
@@ -406,14 +404,13 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
                 <th className="table-header-cell min-w-[120px]">{getColHeader("entryTime")}</th>
                 <th className="table-header-cell min-w-[130px]">{getColHeader("landlordCommission")}</th>
                 <th className="table-header-cell min-w-[110px]">{getColHeader("ourShare")}</th>
-                <th className="table-header-cell min-w-[110px]">{getColHeader("attachments")}</th>
-                <th className="table-header-cell min-w-[200px]">{getColHeader("originalMessage")}</th>
+                <th className="table-header-cell min-w-[240px]">{getColHeader("originalMessage")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {totalItems === 0 ? (
                 <tr>
-                  <td colSpan={15} className="py-16 text-center text-slate-400">
+                  <td colSpan={14} className="py-16 text-center text-slate-400">
                     <Building className="w-8 h-8 mx-auto mb-2 text-slate-300" />
                     <div>{t("common.noData")}</div>
                   </td>
@@ -425,7 +422,6 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
                       ? row.key_details?.[locale] || row.key_details?.vi || JSON.stringify(row.key_details)
                       : String(row.key_details || "—");
 
-                  const attachmentList = Array.isArray(row.attachments) ? row.attachments : [];
                   const hasMultiOptions = Array.isArray(row.rental_options) && row.rental_options.length > 0;
 
                   return (
@@ -573,29 +569,8 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
                         {row.our_share_percent ? `${row.our_share_percent}%` : row.our_share_text || "—"}
                       </td>
 
-                      {/* 14. Link ảnh/tệp */}
-                      <td className="p-3 text-center">
-                        {attachmentList.length > 0 ? (
-                          <button
-                            onClick={() =>
-                              setPreviewImages(
-                                attachmentList
-                                  .map((a: any) => (typeof a === "string" ? a : a?.url || a?.path || ""))
-                                  .filter(Boolean)
-                              )
-                            }
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 font-semibold border border-sky-200 transition cursor-pointer text-[11px] shadow-sm"
-                          >
-                            <ImageIcon className="w-3.5 h-3.5 text-sky-600" />
-                            <span>{attachmentList.length} ảnh</span>
-                          </button>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
-
-                      {/* 15. Nội dung gốc */}
-                      <td className="p-3 text-slate-500 max-w-[220px]">
+                      {/* 14. Nội dung gốc */}
+                      <td className="p-3 text-slate-500 max-w-[240px]">
                         <div
                           className="truncate cursor-pointer hover:text-sky-700"
                           title={row.raw_text || ""}
@@ -699,34 +674,6 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
               </button>
             </div>
           )}
-        </div>
-      )}
-
-      {/* MODAL 1: LIGHTBOX ZOOM XEM ẢNH */}
-      {previewImages && (
-        <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="font-bold text-slate-900 text-base">Hình ảnh đính kèm</h3>
-              <button
-                onClick={() => setPreviewImages(null)}
-                className="text-slate-400 hover:text-slate-700 text-lg font-bold cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[60vh] overflow-y-auto p-1">
-              {previewImages.map((src, i) => (
-                <div key={i} className="aspect-video bg-slate-100 rounded-lg overflow-hidden border border-slate-200">
-                  <img
-                    src={src}
-                    alt={`Attachment ${i + 1}`}
-                    className="w-full h-full object-cover hover:scale-105 transition"
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
       )}
 
@@ -912,34 +859,36 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
                 </div>
 
                 {/* Tin nhắn text gốc */}
-                <div className="p-4 rounded-xl bg-slate-900 text-slate-100 font-mono text-xs leading-relaxed max-h-56 overflow-y-auto whitespace-pre-wrap shadow-inner">
+                <div className="p-4 rounded-xl bg-slate-900 text-slate-100 font-mono text-xs leading-relaxed max-h-64 overflow-y-auto whitespace-pre-wrap shadow-inner select-text">
                   {editingRow.raw_text || "(Không có nội dung text gốc)"}
                 </div>
 
-                {/* Ảnh đính kèm từ Zalo */}
-                <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2">
-                  <div className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                    <ImageIcon className="w-4 h-4 text-sky-600" />
-                    <span>Ảnh đính kèm ({editingRow.attachments?.length || 0})</span>
+                {/* Trích xuất chi tiết & Đa ngôn ngữ từ tin nhắn */}
+                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/80 space-y-2.5">
+                  <div className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <FileText className="w-4 h-4 text-sky-600" />
+                    <span>Trích xuất đa ngữ từ tin nhắn</span>
                   </div>
-                  {editingRow.attachments && editingRow.attachments.length > 0 ? (
-                    <div className="grid grid-cols-4 gap-2">
-                      {editingRow.attachments.map((a: any, i: number) => {
-                        const url = typeof a === "string" ? a : a?.url || "";
-                        return (
-                          <div
-                            key={i}
-                            className="aspect-square rounded-lg overflow-hidden border border-slate-200 bg-slate-200 cursor-pointer hover:scale-105 transition"
-                            onClick={() => setPreviewImages([url])}
-                          >
-                            <img src={url} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="text-[11px] text-slate-400 italic">Không có ảnh nào</div>
-                  )}
+                  <div className="space-y-1.5 text-xs">
+                    {editingRow.key_details?.vi && (
+                      <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs">
+                        <span className="font-bold text-sky-800 text-[10px] uppercase tracking-wide block mb-0.5">Tiếng Việt (VI):</span>
+                        <p className="text-slate-700 leading-relaxed">{editingRow.key_details.vi}</p>
+                      </div>
+                    )}
+                    {editingRow.key_details?.zh && (
+                      <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs">
+                        <span className="font-bold text-emerald-800 text-[10px] uppercase tracking-wide block mb-0.5">中文 (ZH):</span>
+                        <p className="text-slate-700 leading-relaxed">{editingRow.key_details.zh}</p>
+                      </div>
+                    )}
+                    {editingRow.key_details?.en && (
+                      <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs">
+                        <span className="font-bold text-indigo-800 text-[10px] uppercase tracking-wide block mb-0.5">English (EN):</span>
+                        <p className="text-slate-700 leading-relaxed">{editingRow.key_details.en}</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 

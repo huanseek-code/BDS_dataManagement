@@ -70,7 +70,6 @@ export async function GET() {
     { header: "审核入库时间\nThời điểm duyệt đơn", key: "entry_time", width: 22 },
     { header: "房东给的佣金\nHoa hồng do chủ nhà trả", key: "landlord_commission", width: 22 },
     { header: "我方分成\nPhần hoa hồng bên mình", key: "our_share", width: 18 },
-    { header: "照片/附件链接\nLink ảnh/tệp đính kèm", key: "attachments", width: 28 },
     { header: "原始信息及消息引用\nNội dung gốc và ID/link tin nhắn", key: "raw_message", width: 35 },
   ];
 
@@ -109,10 +108,6 @@ export async function GET() {
       typeof p.key_details === "object"
         ? p.key_details?.vi || JSON.stringify(p.key_details)
         : p.key_details || "";
-
-    const attachmentUrls = Array.isArray(p.attachments)
-      ? p.attachments.map((a: any) => a.url || a.path).join("\n")
-      : "";
 
     const listing = p.property_listings?.[0];
     const sender =
@@ -155,7 +150,6 @@ export async function GET() {
       entry_time: approvalTimeStr,
       landlord_commission: p.landlord_commission_text || "",
       our_share: p.our_share_percent ? `${p.our_share_percent}%` : p.our_share_text || "",
-      attachments: attachmentUrls,
       raw_message: p.code,
     });
   });

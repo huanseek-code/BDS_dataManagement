@@ -20,14 +20,12 @@ import {
   GitMerge,
   Calculator,
   Tag,
-  Image as ImageIcon,
   AlertTriangle,
   Undo2,
   X,
   ChevronLeft,
   ChevronRight,
   ShieldAlert,
-  Upload,
   RefreshCw,
 } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
@@ -59,10 +57,8 @@ export function InboxView({
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showFullChat, setShowFullChat] = useState(false);
-  const [activeLightboxImg, setActiveLightboxImg] = useState<string | null>(null);
   const [mergeModalSibling, setMergeModalSibling] = useState<any | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [uploadingPhotos, setUploadingPhotos] = useState(false);
 
   const [formState, setFormState] = useState<any>(
     initialListings[0] ? extractFormData(initialListings[0]) : null
@@ -72,53 +68,6 @@ export function InboxView({
     setIsRefreshing(true);
     router.refresh();
     setTimeout(() => setIsRefreshing(false), 800);
-  };
-
-  const handleUploadPhotos = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    setUploadingPhotos(true);
-    try {
-      const fd = new FormData();
-      for (let i = 0; i < files.length; i++) {
-        fd.append("files", files[i]);
-      }
-
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: fd,
-      });
-
-      const data = await res.json();
-      if (res.ok && Array.isArray(data.urls) && data.urls.length > 0) {
-        const currentAtt = Array.isArray(formState.attachments) ? formState.attachments : [];
-        const updated = [...currentAtt, ...data.urls];
-        setFormState({
-          ...formState,
-          attachments: updated,
-        });
-
-        if (selectedListing?.id) {
-          fetch("/api/inbox/action", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "update_attachments",
-              listingId: selectedListing.id,
-              attachments: updated,
-            }),
-          }).catch(() => {});
-        }
-      } else {
-        alert("Upload error: " + (data.error || "Failed to upload"));
-      }
-    } catch (err: any) {
-      alert("Upload failed: " + err.message);
-    } finally {
-      setUploadingPhotos(false);
-      e.target.value = "";
-    }
   };
 
   function normalizeHandoverCondition(val?: string | null): string {
@@ -132,16 +81,6 @@ export function InboxView({
   }
 
   function extractFormData(listing: any) {
-    const rawAttachments = Array.isArray(listing.attachments)
-      ? listing.attachments
-      : Array.isArray(listing.submission?.attachments)
-      ? listing.submission.attachments
-      : [];
-
-    const stringUrls: string[] = rawAttachments
-      .map((a: any) => (typeof a === "string" ? a : a?.url || a?.path || ""))
-      .filter(Boolean);
-
     return {
       province: listing.province || "",
       address_text: listing.address_text || "",
@@ -165,7 +104,7 @@ export function InboxView({
       details_vi: listing.key_details?.vi || "",
       details_zh: listing.key_details?.zh || "",
       details_en: listing.key_details?.en || "",
-      attachments: stringUrls,
+      attachments: [],
     };
   }
 
@@ -422,7 +361,6 @@ export function InboxView({
             ) : (
               listings.map((item) => {
                 const isSelected = selectedListing?.id === item.id;
-                const attCount = Array.isArray(item.attachments) ? item.attachments.length : 0;
                 return (
                   <div
                     key={item.id}
@@ -464,12 +402,6 @@ export function InboxView({
                         <span className="flex items-center gap-1 font-semibold text-slate-700">
                           <Maximize2 className="w-3 h-3 text-slate-400" />
                           {Number(item.total_lease_area_m2).toLocaleString()} m²
-                        </span>
-                      )}
-                      {attCount > 0 && (
-                        <span className="flex items-center gap-0.5 text-[10px] font-semibold text-sky-700 bg-sky-100 px-1.5 py-0.5 rounded">
-                          <ImageIcon className="w-3 h-3" />
-                          {attCount}
                         </span>
                       )}
                       <span className="ml-auto px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
@@ -640,82 +572,43 @@ export function InboxView({
                     )}
                   </div>
 
-                  {/* Trụ cột 1: ImageGalleryStrip dưới tin nhắn Zalo */}
-                  <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200 space-y-2">
-                    <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                  {/* Trụ cột: Đối soát văn bản & Bản dịch chuẩn hoá AI */}
+                  <div className="p-3.5 bg-slate-50/90 rounded-xl border border-slate-200 space-y-2.5">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-700">
                       <span className="flex items-center gap-1.5">
-                        <ImageIcon className="w-4 h-4 text-sky-600" />
-                        <span>{t("inbox.attachedImages")}</span>
-                        <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-sky-100 text-sky-700">
-                          {formState.attachments?.length || 0}
-                        </span>
+                        <Sparkles className="w-4 h-4 text-amber-500" />
+                        <span>Đối soát trích xuất & Bản dịch (Text Intelligence)</span>
                       </span>
-
-                      {/* Nút tải thêm ảnh thủ công từ máy tính */}
-                      <label className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-sky-700 bg-white hover:bg-sky-50 border border-sky-200 rounded-lg shadow-2xs cursor-pointer transition">
-                        {uploadingPhotos ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-600" />
-                        ) : (
-                          <Upload className="w-3.5 h-3.5 text-sky-600" />
-                        )}
-                        <span>{uploadingPhotos ? t("inbox.uploading") : t("inbox.uploadMorePhotos")}</span>
-                        <input
-                          type="file"
-                          multiple
-                          accept="image/*"
-                          disabled={uploadingPhotos}
-                          onChange={handleUploadPhotos}
-                          className="hidden"
-                        />
-                      </label>
+                      <span className="text-[10px] text-slate-500 font-mono">
+                        {selectedListing.property_types?.join(", ") || "BĐS"}
+                      </span>
                     </div>
 
-                    {formState.attachments && formState.attachments.length > 0 ? (
-                      <div className="grid grid-cols-4 gap-2 pt-1">
-                        {formState.attachments.map((url: string, idx: number) => (
-                          <div
-                            key={idx}
-                            className="relative group aspect-square rounded-lg overflow-hidden border border-slate-200 bg-slate-200 shadow-sm"
-                          >
-                            <img
-                              src={url}
-                              alt={`Zalo attachment ${idx + 1}`}
-                              onClick={() => setActiveLightboxImg(url)}
-                              onError={(e) => {
-                                const target = e.currentTarget;
-                                target.style.display = "none";
-                                if (target.parentElement && !target.parentElement.querySelector(".img-err-fallback")) {
-                                  target.parentElement.classList.add("bg-slate-100", "flex", "items-center", "justify-center");
-                                  const span = document.createElement("span");
-                                  span.className = "img-err-fallback text-[10px] text-slate-400 font-medium text-center px-1 select-none";
-                                  span.innerText = "⚠️ Ảnh hỏng";
-                                  target.parentElement.appendChild(span);
-                                }
-                              }}
-                              className="w-full h-full object-cover cursor-pointer hover:scale-105 transition"
-                            />
-                            {/* Nút gỡ ảnh rác */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setFormState({
-                                  ...formState,
-                                  attachments: formState.attachments.filter((_: any, i: number) => i !== idx),
-                                });
-                              }}
-                              className="absolute top-1 right-1 w-5 h-5 bg-black/60 hover:bg-rose-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition cursor-pointer"
-                              title={t("inbox.removeImage")}
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-[11px] text-slate-400 italic py-2 text-center">
-                        {t("inbox.noImages")}
-                      </div>
-                    )}
+                    <div className="space-y-2 text-xs">
+                      {formState.details_vi && (
+                        <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs">
+                          <span className="font-bold text-sky-800 text-[10px] uppercase tracking-wide block mb-0.5">Tiếng Việt (VI):</span>
+                          <p className="text-slate-700 leading-relaxed font-sans">{formState.details_vi}</p>
+                        </div>
+                      )}
+                      {formState.details_zh && (
+                        <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs">
+                          <span className="font-bold text-emerald-800 text-[10px] uppercase tracking-wide block mb-0.5">中文 (ZH):</span>
+                          <p className="text-slate-700 leading-relaxed font-sans">{formState.details_zh}</p>
+                        </div>
+                      )}
+                      {formState.details_en && (
+                        <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs">
+                          <span className="font-bold text-indigo-800 text-[10px] uppercase tracking-wide block mb-0.5">English (EN):</span>
+                          <p className="text-slate-700 leading-relaxed font-sans">{formState.details_en}</p>
+                        </div>
+                      )}
+                      {!formState.details_vi && !formState.details_zh && !formState.details_en && (
+                        <div className="text-[11px] text-slate-400 italic py-2 text-center">
+                          Chưa có thông tin chi tiết trích xuất
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -1091,28 +984,6 @@ export function InboxView({
                 <span>{t("inbox.confirmMergeBtn")}</span>
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* LIGHTBOX PREVIEW MODAL */}
-      {activeLightboxImg && (
-        <div
-          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm cursor-pointer"
-          onClick={() => setActiveLightboxImg(null)}
-        >
-          <div className="relative max-w-4xl max-h-[90vh] bg-white rounded-2xl overflow-hidden shadow-2xl p-2" onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={() => setActiveLightboxImg(null)}
-              className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black cursor-pointer font-bold"
-            >
-              ✕
-            </button>
-            <img
-              src={activeLightboxImg}
-              alt="Lightbox Zoom"
-              className="max-h-[80vh] w-auto mx-auto object-contain rounded-xl"
-            />
           </div>
         </div>
       )}

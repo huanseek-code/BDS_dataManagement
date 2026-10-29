@@ -1,7 +1,8 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { InboxView } from "@/components/InboxView";
 
-export const revalidate = 5;
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default async function InboxPage() {
   const supabase = createAdminClient();
