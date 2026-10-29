@@ -235,7 +235,7 @@ export default async function PropertiesPage() {
               null,
           };
         })
-      : demoData;
+      : [];
 
   return <PropertyTable initialData={displayRows} />;
 }
