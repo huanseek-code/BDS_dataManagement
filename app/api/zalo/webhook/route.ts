@@ -106,17 +106,9 @@ export async function POST(req: NextRequest) {
       textContent = message.text || null;
     } else if (eventName === "user_send_image") {
       msgType = "image";
+      // Bỏ qua việc tải ảnh xuống R2 theo định hướng kho dữ liệu thuần text
       textContent = message.text || null;
-      if (Array.isArray(message.attachments)) {
-        const rawUrls = message.attachments
-          .map((att: any) => att?.payload?.url || att?.url)
-          .filter(Boolean);
-
-        // Lưu trữ vĩnh viễn lên Cloudflare R2
-        imageUrls = await Promise.all(
-          rawUrls.map((url: string) => downloadAndPersistZaloImage(url))
-        );
-      }
+      imageUrls = [];
     } else if (eventName === "user_send_file") {
       msgType = "file";
       textContent = message.text || null;
@@ -151,9 +143,9 @@ export async function POST(req: NextRequest) {
 
       const subId = (ingestResult as any)?.submission_id;
 
-      // Gia hạn Cửa sổ gom tin (Debounce Window 2.5 phút = 150 giây) cho đợt gửi này
+      // Gia hạn Cửa sổ gom tin văn bản (Debounce Window 35 giây) cho đợt gửi này
       if (subId) {
-        const debouncedCloseAt = new Date(Date.now() + 150 * 1000).toISOString();
+        const debouncedCloseAt = new Date(Date.now() + 35 * 1000).toISOString();
         await supabaseAdmin
           .from("submissions")
           .update({
@@ -183,7 +175,7 @@ export async function POST(req: NextRequest) {
             );
           }
 
-          // 2. Kích hoạt bộ đếm thời gian tự động xử lý Batch sau 2.5 phút (150 giây)
+          // 2. Kích hoạt bộ đếm thời gian tự động xử lý Batch sau 35 giây
           if (subId) {
             setTimeout(async () => {
               try {
@@ -197,15 +189,15 @@ export async function POST(req: NextRequest) {
                 // Nếu submission vẫn đang 'queued' và đã qua thời điểm close_at (không có tin mới gửi thêm)
                 if (curSub && curSub.status === "queued") {
                   const closeAtMs = new Date(curSub.close_at).getTime();
-                  if (Date.now() >= closeAtMs - 3000) {
-                    console.log(`[Debounce Ingestion Timer] Đã hết 2.5 phút chờ, bắt đầu bóc tách toàn cảnh batch ${subId}...`);
+                  if (Date.now() >= closeAtMs - 2000) {
+                    console.log(`[Debounce Ingestion Timer] Đã hết 35s chờ, bắt đầu bóc tách văn bản batch ${subId}...`);
                     await processBatchSubmission(subId);
                   }
                 }
               } catch (timerErr) {
                 console.error("[Debounce Ingestion Timer Error]:", timerErr);
               }
-            }, 150000);
+            }, 35000);
           }
         } catch (bgErr) {
           console.error("[Webhook Background Task Error]:", bgErr);
