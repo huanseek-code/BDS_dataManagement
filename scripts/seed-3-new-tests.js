@@ -167,6 +167,21 @@ function postProcess(prop, rawText) {
   if (prop.price_amount && prop.price_amount > 0 && prop.price_amount < 1000) {
     prop.price_amount = prop.price_amount * 1000000;
   }
+
+  if (prop.price_basis === "per_m2" || String(prop.price_basis).toLowerCase().includes("m2") || String(prop.price_basis).toLowerCase().includes("m²")) {
+    prop.price_basis = "Theo m²";
+  } else {
+    prop.price_basis = "Tổng căn";
+  }
+
+  if (prop.price_period === "year" || String(prop.price_period).toLowerCase().includes("năm")) {
+    prop.price_period = "Theo năm";
+  } else if (prop.price_period === "one_time" || String(prop.price_period).toLowerCase().includes("lần") || String(prop.price_period).toLowerCase().includes("bán")) {
+    prop.price_period = "Một lần";
+  } else {
+    prop.price_period = "Theo tháng";
+  }
+
   return prop;
 }
 

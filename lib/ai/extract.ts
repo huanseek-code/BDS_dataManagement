@@ -78,27 +78,25 @@ QUY TẮC CỐT LÕI:
    - QUY TẮC CẤM SUY ĐOÁN BỪA: Nếu tin nhắn hoàn toàn không có bất kỳ dữ kiện địa danh nào xác định được tỉnh/thành phố, trả về province: null. TUYỆT ĐỐI KHÔNG tự ý gán bừa là "TP. Hồ Chí Minh" hay bất kỳ tỉnh nào.
 
 3. QUY ĐỔI GIÁ TIỀN & ĐƠN VỊ (QUÉT XUYÊN SUỐT HỘI THOẠI):
-   - "80 ạ", "80 tr", "80 triệu" -> price_amount: 80000000, price_currency: "VND", price_basis: "total", price_period: "month"
-   - "50 triệu/tháng", "50tr", "chủ chốt 50tr", "thuê 50 củ" -> price_amount: 50000000, price_currency: "VND", price_basis: "total", price_period: "month"
-   - "16,5 triệu", "16.5tr" -> price_amount: 16500000, price_currency: "VND", price_basis: "total", price_period: "month"
-   - "18 triệu/tháng", "18tr" -> price_amount: 18000000, price_currency: "VND", price_basis: "total", price_period: "month"
-   - "200 tr/ tháng", "200 triệu" -> price_amount: 200000000, price_currency: "VND", price_basis: "total", price_period: "month"
-   - "39 triệu" -> price_amount: 39000000, price_currency: "VND", price_basis: "total", price_period: "month"
-   - "2000$", "2000 usd" -> price_amount: 2000, price_currency: "USD", price_basis: "total", price_period: "month"
-   - "12 tỷ 5", "12.5 tỷ" -> price_amount: 12500000000, price_currency: "VND", price_basis: "total", price_period: "one_time"
-   - "85000đ/m2", "85k/m2" -> price_amount: 85000, price_currency: "VND", price_basis: "per_m2", price_period: "month"
-   - "4.5 USD/m2", "5$/m2" -> price_amount: 4.5, price_currency: "USD", price_basis: "per_m2", price_period: "month"
+   - "80 ạ", "80 tr", "80 triệu" -> price_amount: 80000000, price_currency: "VND", price_basis: "Tổng căn", price_period: "Theo tháng"
+   - "50 triệu/tháng", "50tr", "chủ chốt 50tr", "thuê 50 củ" -> price_amount: 50000000, price_currency: "VND", price_basis: "Tổng căn", price_period: "Theo tháng"
+   - "16,5 triệu", "16.5tr" -> price_amount: 16500000, price_currency: "VND", price_basis: "Tổng căn", price_period: "Theo tháng"
+   - "18 triệu/tháng", "18tr" -> price_amount: 18000000, price_currency: "VND", price_basis: "Tổng căn", price_period: "Theo tháng"
+   - "200 tr/ tháng", "200 triệu" -> price_amount: 200000000, price_currency: "VND", price_basis: "Tổng căn", price_period: "Theo tháng"
+   - "39 triệu" -> price_amount: 39000000, price_currency: "VND", price_basis: "Tổng căn", price_period: "Theo tháng"
+   - "2000$", "2000 usd" -> price_amount: 2000, price_currency: "USD", price_basis: "Tổng căn", price_period: "Theo tháng"
+   - "12 tỷ 5", "12.5 tỷ" -> price_amount: 12500000000, price_currency: "VND", price_basis: "Tổng căn", price_period: "Một lần"
+   - "85000đ/m2", "85k/m2" -> price_amount: 85000, price_currency: "VND", price_basis: "Theo m²", price_period: "Theo tháng"
+   - "4.5 USD/m2", "5$/m2" -> price_amount: 4.5, price_currency: "USD", price_basis: "Theo m²", price_period: "Theo tháng"
    - Luôn sao chép NGUYÊN VĂN chuỗi giá vào "price_text" (ví dụ: "85k/m2", "50 triệu/tháng", "2000$", "200 tr/ tháng", "18 triệu/tháng").
    - QUÉT TOÀN BỘ CHUỖI TIN NHẮN: Quét kỹ các tin nhắn trao đổi tiếp nối để tìm giá tiền, TUYỆT ĐỐI KHÔNG để price_amount: null nếu trong văn bản có bất kỳ mức giá nào được nhắc đến.
    - PHÂN BIỆT CƠ SỞ TÍNH GIÁ (price_basis):
-     * Nhà ở, căn hộ, biệt thự, nhà phố: điền price_basis: "total".
-     * Kho bãi, nhà xưởng, đất, văn phòng cho thuê theo mét vuông: BẮT BUỘC điền price_basis: "per_m2".
+     * Nhà ở, căn hộ, biệt thự, nhà phố: điền price_basis: "Tổng căn".
+     * Kho bãi, nhà xưởng, đất, văn phòng cho thuê theo mét vuông: BẮT BUỘC điền price_basis: "Theo m²".
 
-4. LOẠI HÌNH (property_types): Chọn từ danh sách: ["factory", "warehouse", "office", "retail", "townhouse", "villa", "apartment", "land", "hotel", "other"].
-   - Nhà mặt phố / nhà nguyên căn -> ["townhouse"]
-   - Chung cư / căn hộ / duplex / penthouse -> ["apartment"]
-   - Kho / xưởng -> ["warehouse", "factory"]
-   - Mặt bằng kinh doanh / văn phòng -> ["retail", "office"]
+4. LOẠI HÌNH BĐS (property_types) - GIỮ NGUYÊN BẢN TIẾNG VIỆT:
+   - Trích xuất NGUYÊN MẪU cụm từ chỉ loại hình BĐS có trong tin nhắn dưới dạng tiếng Việt (ví dụ: ["Nhà liền kề"], ["Nhà mặt phố"], ["Căn hộ chung cư"], ["Biệt thự"], ["Kho xưởng"], ["Văn phòng"], ["Mặt bằng kinh doanh"]...).
+   - TUYỆT ĐỐI KHÔNG DỊCH sang tiếng Anh (không dùng "townhouse", "apartment", "villa"...).
    - BẮT BUỘC phải gán ít nhất 1 loại hình phù hợp, TUYỆT ĐỐI KHÔNG để mảng rỗng [].
 
 5. NGUYÊN TẮC BẢO TOÀN DỮ LIỆU GỐC, KHÔNG GIAN HÌNH HỌC & TỪ ĐIỂN CHUẨN (STRICT FIDELITY & GLOSSARY):
@@ -397,6 +395,44 @@ function postProcessListing(prop: ExtractedProperty, fullText: string): Extracte
     if (!/禁止餐饮/i.test(prop.key_details.zh)) {
       prop.key_details.zh += " (禁止餐饮餐饮业)";
     }
+  }
+
+  // 5. Chuẩn hóa tỷ lệ tiền triệu nếu price_amount nhỏ hơn 1000 (ví dụ AI trả 12 thay vì 12000000)
+  if (prop.price_amount && prop.price_amount > 0 && prop.price_amount < 1000) {
+    prop.price_amount = Math.round(prop.price_amount * 1000000);
+  }
+
+  // 6. Giữ nguyên bản tiếng Việt cho Cách tính giá & Kỳ hạn
+  if (prop.price_basis === "per_m2" || String(prop.price_basis).toLowerCase().includes("m2") || String(prop.price_basis).toLowerCase().includes("m²")) {
+    prop.price_basis = "Theo m²";
+  } else {
+    prop.price_basis = "Tổng căn";
+  }
+
+  if (prop.price_period === "year" || String(prop.price_period).toLowerCase().includes("năm")) {
+    prop.price_period = "Theo năm";
+  } else if (prop.price_period === "one_time" || String(prop.price_period).toLowerCase().includes("lần") || String(prop.price_period).toLowerCase().includes("bán")) {
+    prop.price_period = "Một lần";
+  } else {
+    prop.price_period = "Theo tháng";
+  }
+
+  // 7. Chuẩn hóa tiếng Việt cho Loại hình BĐS
+  const TYPE_MAP: Record<string, string> = {
+    townhouse: "Nhà phố",
+    apartment: "Chung cư",
+    villa: "Biệt thự",
+    warehouse: "Kho bãi",
+    factory: "Nhà xưởng",
+    office: "Văn phòng",
+    retail: "Mặt bằng",
+    land: "Đất",
+    hotel: "Khách sạn",
+  };
+  if (Array.isArray(prop.property_types)) {
+    prop.property_types = prop.property_types.map((t: string) => TYPE_MAP[t] || t);
+  } else if (typeof prop.property_types === "string") {
+    prop.property_types = [TYPE_MAP[prop.property_types] || prop.property_types];
   }
 
   return prop;
