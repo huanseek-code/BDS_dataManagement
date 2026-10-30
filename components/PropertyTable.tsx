@@ -163,13 +163,17 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
   };
 
   const openEditModal = (row: PropertyRow) => {
+    const rawTypes = Array.isArray(row.property_types) && row.property_types.length > 0
+      ? [...row.property_types]
+      : ["Nhà phố"];
     setEditingRow(row);
     setEditForm({
       province: row.province || "",
       address_text: row.address_text || "",
       district_legacy: row.district_legacy || "",
       ward: row.ward || "",
-      property_types: Array.isArray(row.property_types) ? [...row.property_types] : ["townhouse"],
+      property_types: rawTypes,
+      property_types_text: rawTypes.join(", "),
       total_lease_area_m2: row.total_lease_area_m2 ?? "",
       floor_area_m2: row.floor_area_m2 ?? "",
       price_amount: row.price_amount ?? "",
@@ -190,25 +194,15 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
     });
   };
 
-  const toggleEditPropertyType = (typeKey: string) => {
-    if (!editForm) return;
-    const currentTypes = Array.isArray(editForm.property_types) ? [...editForm.property_types] : [];
-    const index = currentTypes.indexOf(typeKey);
-    if (index > -1) {
-      if (currentTypes.length > 1) {
-        currentTypes.splice(index, 1);
-      }
-    } else {
-      currentTypes.push(typeKey);
-    }
-    setEditForm({ ...editForm, property_types: currentTypes });
-  };
-
   const handleSaveProperty = async () => {
     if (!editingRow || !editForm) return;
 
-    if (!editForm.province?.trim() || !editForm.property_types || editForm.property_types.length === 0) {
-      alert("Vui lòng chọn ít nhất một Loại hình BĐS và điền Tỉnh/Thành phố!");
+    const typesArray = editForm.property_types_text
+      ? editForm.property_types_text.split(",").map((s: string) => s.trim()).filter(Boolean)
+      : (Array.isArray(editForm.property_types) ? editForm.property_types : [editForm.property_types].filter(Boolean));
+
+    if (!editForm.province?.trim() || typesArray.length === 0) {
+      alert("Vui lòng điền Loại hình BĐS và Tỉnh/Thành phố!");
       return;
     }
 
@@ -221,6 +215,7 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
           propertyId: editingRow.id,
           propertyData: {
             ...editForm,
+            property_types: typesArray,
             floor_area_m2: editForm.floor_area_m2 ? Number(editForm.floor_area_m2) : null,
             total_lease_area_m2: editForm.total_lease_area_m2 ? Number(editForm.total_lease_area_m2) : null,
             price_amount: editForm.price_amount ? Number(editForm.price_amount) : null,
@@ -938,31 +933,25 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
                 </div>
 
                 <div className="space-y-3 p-4 rounded-xl border border-slate-200 bg-white max-h-[580px] overflow-y-auto shadow-sm">
-                  {/* Loại hình BĐS */}
+                  {/* Loại hình BĐS (Dòng text thuần túy) */}
                   <div>
                     <label className="text-[11px] font-semibold text-slate-700 block mb-1">
                       {t("inbox.propertyTypes")} <span className="text-rose-500">*</span>
                     </label>
-                    <div className="flex flex-wrap gap-1.5">
-                      {AVAILABLE_PROPERTY_TYPES.map((pt) => {
-                        const isSelected = editForm.property_types?.includes(pt.key);
-                        const label = locale === "zh" ? pt.zh : locale === "en" ? pt.en : pt.vi;
-                        return (
-                          <button
-                            key={pt.key}
-                            type="button"
-                            onClick={() => toggleEditPropertyType(pt.key)}
-                            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition border cursor-pointer ${
-                              isSelected
-                                ? "bg-sky-600 text-white border-sky-600 shadow-sm"
-                                : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                            }`}
-                          >
-                            {label}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    <input
+                      type="text"
+                      value={editForm.property_types_text ?? (Array.isArray(editForm.property_types) ? editForm.property_types.join(", ") : editForm.property_types || "")}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setEditForm({
+                          ...editForm,
+                          property_types_text: val,
+                          property_types: val.split(",").map((s: string) => s.trim()).filter(Boolean),
+                        });
+                      }}
+                      placeholder="Nhà phố, Biệt thự, Chung cư, Kho xưởng, Văn phòng..."
+                      className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-sky-500 font-medium text-slate-800"
+                    />
                   </div>
 
                   {/* Tỉnh / TP & Địa chỉ */}
@@ -1084,14 +1073,15 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
                     </div>
                   </div>
 
-                  {/* 2 Dòng: Nội thất & Danh sách nội thất nguyên mẫu */}
+                  {/* 2 Dòng: Nội thất & Danh sách nội thất (Dòng text thuần túy) */}
                   <div className="space-y-2 p-3 bg-slate-50/80 rounded-xl border border-slate-200">
                     <div>
                       <label className="text-[11px] font-bold text-slate-700 block mb-1">
                         Nội thất:
                       </label>
-                      <select
-                        value={editForm.furniture_status || editForm.handover_condition || "chưa rõ"}
+                      <input
+                        type="text"
+                        value={editForm.furniture_status || editForm.handover_condition || ""}
                         onChange={(e) =>
                           setEditForm({
                             ...editForm,
@@ -1099,14 +1089,9 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
                             handover_condition: e.target.value,
                           })
                         }
-                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white font-medium text-slate-800"
-                      >
-                        <option value="cơ bản">cơ bản</option>
-                        <option value="đầy đủ nội thất">đầy đủ nội thất</option>
-                        <option value="không nội thất">không nội thất</option>
-                        <option value="bàn giao thô">bàn giao thô</option>
-                        <option value="chưa rõ">chưa rõ</option>
-                      </select>
+                        placeholder="cơ bản / đầy đủ nội thất / không nội thất / bàn giao thô / chưa rõ"
+                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white font-medium text-slate-800 focus:ring-2 focus:ring-sky-500"
+                      />
                     </div>
 
                     <div>

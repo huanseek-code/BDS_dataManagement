@@ -82,13 +82,16 @@ export function InboxView({
   }
 
   function extractFormData(listing: any) {
+    const rawTypes = Array.isArray(listing.property_types) && listing.property_types.length > 0
+      ? listing.property_types
+      : (typeof listing.property_types === "string" ? [listing.property_types] : ["Nhà phố"]);
+    const propertyTypesText = rawTypes.join(", ");
+
     return {
       province: listing.province || "",
       address_text: listing.address_text || "",
-      property_types:
-        Array.isArray(listing.property_types) && listing.property_types.length > 0
-          ? listing.property_types
-          : ["townhouse"],
+      property_types: rawTypes,
+      property_types_text: propertyTypesText,
       total_lease_area_m2: listing.total_lease_area_m2 || "",
       floor_area_m2: listing.floor_area_m2 || "",
       price_amount: listing.price_amount || "",
@@ -121,24 +124,15 @@ export function InboxView({
     setFormState(extractFormData(listing));
   };
 
-  const togglePropertyType = (typeKey: string) => {
-    const currentTypes = Array.isArray(formState.property_types) ? [...formState.property_types] : [];
-    const index = currentTypes.indexOf(typeKey);
-    if (index > -1) {
-      if (currentTypes.length > 1) {
-        currentTypes.splice(index, 1);
-      }
-    } else {
-      currentTypes.push(typeKey);
-    }
-    setFormState({ ...formState, property_types: currentTypes });
-  };
-
   const handleApprove = async () => {
     if (!selectedListing || !formState) return;
 
+    const typesArray = formState.property_types_text
+      ? formState.property_types_text.split(",").map((s: string) => s.trim()).filter(Boolean)
+      : (Array.isArray(formState.property_types) ? formState.property_types : [formState.property_types].filter(Boolean));
+
     // PRE-APPROVAL VALIDATION GATE
-    if (!formState.province?.trim() || !Array.isArray(formState.property_types) || formState.property_types.length === 0) {
+    if (!formState.province?.trim() || typesArray.length === 0) {
       alert(t("inbox.validationRequired"));
       return;
     }
@@ -153,6 +147,7 @@ export function InboxView({
           listingId: selectedListing.id,
           propertyData: {
             ...formState,
+            property_types: typesArray,
             total_lease_area_m2: formState.total_lease_area_m2 ? Number(formState.total_lease_area_m2) : null,
             floor_area_m2: formState.floor_area_m2 ? Number(formState.floor_area_m2) : null,
             price_amount: formState.price_amount ? Number(formState.price_amount) : null,
@@ -536,7 +531,7 @@ export function InboxView({
                     )}
                   </div>
 
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 leading-relaxed font-mono whitespace-pre-wrap min-h-[300px] max-h-[460px] overflow-y-auto shadow-inner space-y-3">
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 leading-relaxed font-mono whitespace-pre-wrap min-h-[460px] max-h-[720px] overflow-y-auto shadow-inner space-y-3">
                     {showFullChat ? (
                       <div>
                         <div className="text-[11px] font-bold text-slate-500 mb-2 pb-1 border-b border-slate-200">
@@ -581,61 +576,6 @@ export function InboxView({
                       </div>
                     )}
                   </div>
-
-                  {/* Trụ cột: Đối soát văn bản & Bản dịch chuẩn hoá AI */}
-                  <div className="p-3.5 bg-slate-50/90 rounded-xl border border-slate-200 space-y-2.5">
-                    <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-                      <span className="flex items-center gap-1.5">
-                        <Sparkles className="w-4 h-4 text-amber-500" />
-                        <span>Đối soát trích xuất & Bản dịch (Text Intelligence)</span>
-                      </span>
-                      <span className="text-[10px] text-slate-500 font-mono">
-                        {selectedListing.property_types?.join(", ") || "BĐS"}
-                      </span>
-                    </div>
-
-                    <div className="space-y-2 text-xs">
-                      {/* Hiển thị trực tiếp 2 dòng Nội thất & Danh sách nội thất */}
-                      <div className="p-2.5 rounded-lg bg-sky-50/70 border border-sky-200 text-xs space-y-1.5">
-                        <div>
-                          <span className="font-bold text-sky-900 block mb-0.5">Nội thất:</span>
-                          <span className="font-semibold text-sky-800 bg-white px-2 py-0.5 rounded border border-sky-200 inline-block">
-                            {formState.furniture_status || formState.handover_condition || "chưa rõ"}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="font-bold text-sky-900 block mb-0.5">Danh sách nội thất:</span>
-                          <span className="text-slate-700 bg-white p-2 rounded border border-sky-200 block font-mono text-[11px] whitespace-pre-wrap">
-                            {formState.furniture_list || "— (Không liệt kê)"}
-                          </span>
-                        </div>
-                      </div>
-
-                      {formState.details_vi && (
-                        <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs">
-                          <span className="font-bold text-sky-800 text-[10px] uppercase tracking-wide block mb-0.5">Tiếng Việt (VI):</span>
-                          <p className="text-slate-700 leading-relaxed font-sans">{formState.details_vi}</p>
-                        </div>
-                      )}
-                      {formState.details_zh && (
-                        <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs">
-                          <span className="font-bold text-emerald-800 text-[10px] uppercase tracking-wide block mb-0.5">中文 (ZH):</span>
-                          <p className="text-slate-700 leading-relaxed font-sans">{formState.details_zh}</p>
-                        </div>
-                      )}
-                      {formState.details_en && (
-                        <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs">
-                          <span className="font-bold text-indigo-800 text-[10px] uppercase tracking-wide block mb-0.5">English (EN):</span>
-                          <p className="text-slate-700 leading-relaxed font-sans">{formState.details_en}</p>
-                        </div>
-                      )}
-                      {!formState.details_vi && !formState.details_zh && !formState.details_en && (
-                        <div className="text-[11px] text-slate-400 italic py-2 text-center">
-                          Chưa có thông tin chi tiết trích xuất
-                        </div>
-                      )}
-                    </div>
-                  </div>
                 </div>
 
                 {/* Right Column: Trường dữ liệu chuẩn hóa AI đã trích xuất */}
@@ -648,39 +588,33 @@ export function InboxView({
                     <span className="text-[10px] text-slate-400">{t("inbox.editableHint")}</span>
                   </div>
 
-                  <div className="space-y-3 p-4 rounded-xl border border-slate-200 bg-white max-h-[660px] overflow-y-auto shadow-sm">
-                    {/* TRỤ CỘT 6: Loại hình BĐS (Multi-select) */}
+                  <div className="space-y-3 p-4 rounded-xl border border-slate-200 bg-white max-h-[720px] overflow-y-auto shadow-sm">
+                    {/* Loại hình BĐS (Dòng text thuần túy) */}
                     <div>
-                      <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center justify-between mb-1">
                         <label className="text-[11px] font-semibold text-slate-700 block">
                           {t("inbox.propertyTypes")} <span className="text-rose-500">*</span>
                         </label>
-                        {(!formState.property_types || formState.property_types.length === 0) && (
+                        {(!formState.property_types_text?.trim() && (!formState.property_types || formState.property_types.length === 0)) && (
                           <span className="text-[10px] text-rose-600 font-bold flex items-center gap-0.5">
-                            <AlertTriangle className="w-3 h-3" /> Bắt buộc chọn
+                            <AlertTriangle className="w-3 h-3" /> Bắt buộc nhập
                           </span>
                         )}
                       </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {AVAILABLE_PROPERTY_TYPES.map((pt) => {
-                          const isSelected = formState.property_types?.includes(pt.key);
-                          const label = locale === "zh" ? pt.zh : locale === "en" ? pt.en : pt.vi;
-                          return (
-                            <button
-                              key={pt.key}
-                              type="button"
-                              onClick={() => togglePropertyType(pt.key)}
-                              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition border cursor-pointer ${
-                                isSelected
-                                  ? "bg-sky-600 text-white border-sky-600 shadow-sm"
-                                  : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                              }`}
-                            >
-                              {label}
-                            </button>
-                          );
-                        })}
-                      </div>
+                      <input
+                        type="text"
+                        value={formState.property_types_text ?? (Array.isArray(formState.property_types) ? formState.property_types.join(", ") : formState.property_types || "")}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFormState({
+                            ...formState,
+                            property_types_text: val,
+                            property_types: val.split(",").map((s: string) => s.trim()).filter(Boolean),
+                          });
+                        }}
+                        placeholder="Nhà phố, Biệt thự, Chung cư, Kho xưởng, Văn phòng..."
+                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-sky-500 font-medium text-slate-800"
+                      />
                     </div>
 
                     {/* Tỉnh / TP (Bắt buộc) */}
@@ -742,15 +676,15 @@ export function InboxView({
                       </div>
                     </div>
 
-                    {/* TRỤ CỘT 3: Hiện trạng bàn giao (Strict Handover Enum) */}
-                    {/* 2 Dòng: Nội thất & Danh sách nội thất nguyên mẫu */}
+                    {/* 2 Dòng: Nội thất & Danh sách nội thất (Dòng text thuần túy) */}
                     <div className="space-y-2 p-3 bg-slate-50/80 rounded-xl border border-slate-200">
                       <div>
                         <label className="text-[11px] font-bold text-slate-700 block mb-1">
                           Nội thất:
                         </label>
-                        <select
-                          value={formState.furniture_status || formState.handover_condition || "chưa rõ"}
+                        <input
+                          type="text"
+                          value={formState.furniture_status || formState.handover_condition || ""}
                           onChange={(e) =>
                             setFormState({
                               ...formState,
@@ -758,14 +692,9 @@ export function InboxView({
                               handover_condition: e.target.value,
                             })
                           }
-                          className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white font-medium text-slate-800"
-                        >
-                          <option value="cơ bản">cơ bản</option>
-                          <option value="đầy đủ nội thất">đầy đủ nội thất</option>
-                          <option value="không nội thất">không nội thất</option>
-                          <option value="bàn giao thô">bàn giao thô</option>
-                          <option value="chưa rõ">chưa rõ</option>
-                        </select>
+                          placeholder="cơ bản / đầy đủ nội thất / không nội thất / bàn giao thô / chưa rõ"
+                          className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white font-medium text-slate-800 focus:ring-2 focus:ring-sky-500"
+                        />
                       </div>
 
                       <div>
@@ -776,7 +705,7 @@ export function InboxView({
                           rows={2}
                           value={formState.furniture_list || ""}
                           onChange={(e) => setFormState({ ...formState, furniture_list: e.target.value })}
-                          placeholder="Nguyên mẫu các món đồ trong tin nhắn (ví dụ: điều hòa, nóng lạnh, giường, tủ; không có tủ lạnh)"
+                          placeholder="Nguyên mẫu các món đồ trong tin nhắn..."
                           className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white focus:ring-2 focus:ring-sky-500 font-sans"
                         />
                       </div>
