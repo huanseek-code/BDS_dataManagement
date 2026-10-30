@@ -1035,14 +1035,13 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
                       <label className="text-[11px] font-semibold text-slate-600 block mb-1">
                         Tiền tệ
                       </label>
-                      <select
-                        value={editForm.price_currency}
+                      <input
+                        type="text"
+                        value={editForm.price_currency || "VND"}
                         onChange={(e) => setEditForm({ ...editForm, price_currency: e.target.value })}
-                        className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white font-semibold"
-                      >
-                        <option value="VND">VND (₫)</option>
-                        <option value="USD">USD ($)</option>
-                      </select>
+                        placeholder="VND"
+                        className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white font-semibold text-slate-800"
+                      />
                     </div>
                   </div>
 

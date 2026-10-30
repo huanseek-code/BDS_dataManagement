@@ -96,9 +96,12 @@ export function InboxView({
       floor_area_m2: listing.floor_area_m2 || "",
       price_amount: listing.price_amount || "",
       price_currency: listing.price_currency || "VND",
+      price_basis: listing.price_basis || "total",
+      price_basis_text: listing.price_basis === "per_m2" ? "Theo m²" : "Tổng căn",
       price_period:
         listing.price_period === "monthly" ? "month" : listing.price_period || "month",
-      price_basis: listing.price_basis || "total",
+      price_period_text:
+        listing.price_period === "year" ? "Theo năm" : (listing.price_period === "one_time" ? "Một lần (Bán)" : "Theo tháng"),
       price_text: listing.price_text || listing.ai_extracted?.price_text || "",
       landlord_commission_text: listing.landlord_commission_text || "",
       our_share_text: listing.our_share_text || "",
@@ -743,45 +746,60 @@ export function InboxView({
                           />
                         </div>
                         <div>
-                          <select
-                            value={formState.price_currency}
+                          <input
+                            type="text"
+                            value={formState.price_currency || "VND"}
                             onChange={(e) => setFormState({ ...formState, price_currency: e.target.value })}
-                            className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white font-semibold text-slate-800"
-                          >
-                            <option value="VND">VND (₫)</option>
-                            <option value="USD">USD ($)</option>
-                          </select>
+                            placeholder="VND"
+                            className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white font-semibold text-slate-800 focus:ring-2 focus:ring-emerald-500"
+                          />
                         </div>
                       </div>
 
-                      {/* Cơ sở tính giá & Kỳ hạn */}
+                      {/* Cơ sở tính giá & Kỳ hạn (Dòng text thuần túy) */}
                       <div className="grid grid-cols-2 gap-2 pt-1">
                         <div>
                           <label className="text-[10px] font-semibold text-slate-500 block mb-0.5">
                             {t("inbox.priceBasis")}
                           </label>
-                          <select
-                            value={formState.price_basis}
-                            onChange={(e) => setFormState({ ...formState, price_basis: e.target.value })}
-                            className="w-full px-2 py-1 text-xs rounded border border-slate-200 bg-white text-slate-700"
-                          >
-                            <option value="total">{t("inbox.priceBasisTotal")}</option>
-                            <option value="per_m2">{t("inbox.priceBasisPerM2")}</option>
-                          </select>
+                          <input
+                            type="text"
+                            value={formState.price_basis_text ?? (formState.price_basis === "per_m2" ? "Theo m²" : "Tổng căn")}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              const isPerM2 = val.toLowerCase().includes("m2") || val.toLowerCase().includes("m²");
+                              setFormState({
+                                ...formState,
+                                price_basis_text: val,
+                                price_basis: isPerM2 ? "per_m2" : "total",
+                              });
+                            }}
+                            placeholder="Tổng căn / Theo m²"
+                            className="w-full px-2 py-1 text-xs rounded border border-slate-200 bg-white text-slate-700 font-medium focus:ring-2 focus:ring-sky-500"
+                          />
                         </div>
                         <div>
                           <label className="text-[10px] font-semibold text-slate-500 block mb-0.5">
                             {t("inbox.pricePeriod")}
                           </label>
-                          <select
-                            value={formState.price_period}
-                            onChange={(e) => setFormState({ ...formState, price_period: e.target.value })}
-                            className="w-full px-2 py-1 text-xs rounded border border-slate-200 bg-white text-slate-700"
-                          >
-                            <option value="month">{t("inbox.pricePeriodMonth")}</option>
-                            <option value="year">{t("inbox.pricePeriodYear")}</option>
-                            <option value="one_time">{t("inbox.pricePeriodOneTime")}</option>
-                          </select>
+                          <input
+                            type="text"
+                            value={formState.price_period_text ?? (formState.price_period === "year" ? "Theo năm" : (formState.price_period === "one_time" ? "Một lần (Bán)" : "Theo tháng"))}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              const low = val.toLowerCase();
+                              let p = "month";
+                              if (low.includes("năm") || low.includes("year")) p = "year";
+                              else if (low.includes("lần") || low.includes("bán") || low.includes("one")) p = "one_time";
+                              setFormState({
+                                ...formState,
+                                price_period_text: val,
+                                price_period: p,
+                              });
+                            }}
+                            placeholder="Theo tháng / Theo năm / Một lần..."
+                            className="w-full px-2 py-1 text-xs rounded border border-slate-200 bg-white text-slate-700 font-medium focus:ring-2 focus:ring-sky-500"
+                          />
                         </div>
                       </div>
 
