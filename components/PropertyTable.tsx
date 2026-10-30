@@ -180,7 +180,9 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
       landlord_commission_text: row.landlord_commission_text || "",
       our_share_percent: row.our_share_percent ?? "",
       our_share_text: row.our_share_text || "",
-      handover_condition: row.key_details?.handover_condition || "basic_unfurnished",
+      furniture_status: row.key_details?.furniture_status || row.key_details?.handover_condition || "chưa rõ",
+      furniture_list: row.key_details?.furniture_list || "",
+      handover_condition: row.key_details?.furniture_status || row.key_details?.handover_condition || "chưa rõ",
       details_vi: row.key_details?.vi || "",
       details_zh: row.key_details?.zh || "",
       details_en: row.key_details?.en || "",
@@ -228,7 +230,9 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
               vi: editForm.details_vi,
               zh: editForm.details_zh,
               en: editForm.details_en,
-              handover_condition: editForm.handover_condition,
+              furniture_status: editForm.furniture_status || editForm.handover_condition || "chưa rõ",
+              furniture_list: editForm.furniture_list || "",
+              handover_condition: editForm.furniture_status || editForm.handover_condition || "chưa rõ",
               rental_options: editForm.rental_options,
             },
             rental_options: editForm.rental_options,
@@ -512,8 +516,24 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
                       </td>
 
                       {/* 7. Chi tiết chính */}
-                      <td className="p-3 text-slate-600 line-clamp-3 max-w-[240px]">
-                        {keyDetailsText || "—"}
+                      <td className="p-3 text-slate-600 max-w-[260px] space-y-1">
+                        <div className="line-clamp-3">{keyDetailsText || "—"}</div>
+                        {(row.key_details?.furniture_status || row.key_details?.furniture_list) && (
+                          <div className="pt-1 border-t border-slate-100 text-[11px] text-slate-700 space-y-0.5">
+                            {row.key_details?.furniture_status && (
+                              <div>
+                                <span className="font-semibold text-sky-800">Nội thất: </span>
+                                <span>{row.key_details.furniture_status}</span>
+                              </div>
+                            )}
+                            {row.key_details?.furniture_list && (
+                              <div className="line-clamp-2 text-slate-500">
+                                <span className="font-semibold text-slate-700">Đồ: </span>
+                                <span>{row.key_details.furniture_list}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </td>
 
                       {/* 8. Đối tác cung cấp */}
@@ -870,6 +890,22 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
                     <span>Trích xuất đa ngữ từ tin nhắn</span>
                   </div>
                   <div className="space-y-1.5 text-xs">
+                    {/* Hiển thị trực tiếp 2 dòng Nội thất & Danh sách nội thất */}
+                    <div className="p-2.5 rounded-lg bg-sky-50/70 border border-sky-200 text-xs space-y-1.5">
+                      <div>
+                        <span className="font-bold text-sky-900 block mb-0.5">Nội thất:</span>
+                        <span className="font-semibold text-sky-800 bg-white px-2 py-0.5 rounded border border-sky-200 inline-block">
+                          {editingRow.key_details?.furniture_status || editingRow.key_details?.handover_condition || "chưa rõ"}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="font-bold text-sky-900 block mb-0.5">Danh sách nội thất:</span>
+                        <span className="text-slate-700 bg-white p-2 rounded border border-sky-200 block font-mono text-[11px] whitespace-pre-wrap">
+                          {editingRow.key_details?.furniture_list || "— (Không liệt kê)"}
+                        </span>
+                      </div>
+                    </div>
+
                     {editingRow.key_details?.vi && (
                       <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs">
                         <span className="font-bold text-sky-800 text-[10px] uppercase tracking-wide block mb-0.5">Tiếng Việt (VI):</span>
@@ -1048,21 +1084,43 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
                     </div>
                   </div>
 
-                  {/* Hiện trạng bàn giao */}
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">
-                      Hiện trạng bàn giao
-                    </label>
-                    <select
-                      value={editForm.handover_condition}
-                      onChange={(e) => setEditForm({ ...editForm, handover_condition: e.target.value })}
-                      className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white font-medium"
-                    >
-                      <option value="bare_shell">Bàn giao thô (Chưa hoàn thiện)</option>
-                      <option value="basic_unfurnished">Hoàn thiện cơ bản (Không đồ)</option>
-                      <option value="partially_furnished">Nội thất cơ bản (Bếp, điều hòa)</option>
-                      <option value="fully_furnished">Đầy đủ nội thất (Full đồ)</option>
-                    </select>
+                  {/* 2 Dòng: Nội thất & Danh sách nội thất nguyên mẫu */}
+                  <div className="space-y-2 p-3 bg-slate-50/80 rounded-xl border border-slate-200">
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        Nội thất:
+                      </label>
+                      <select
+                        value={editForm.furniture_status || editForm.handover_condition || "chưa rõ"}
+                        onChange={(e) =>
+                          setEditForm({
+                            ...editForm,
+                            furniture_status: e.target.value,
+                            handover_condition: e.target.value,
+                          })
+                        }
+                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white font-medium text-slate-800"
+                      >
+                        <option value="cơ bản">cơ bản</option>
+                        <option value="đầy đủ nội thất">đầy đủ nội thất</option>
+                        <option value="không nội thất">không nội thất</option>
+                        <option value="bàn giao thô">bàn giao thô</option>
+                        <option value="chưa rõ">chưa rõ</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        Danh sách nội thất:
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={editForm.furniture_list || ""}
+                        onChange={(e) => setEditForm({ ...editForm, furniture_list: e.target.value })}
+                        placeholder="Nguyên mẫu các món đồ trong tin nhắn (ví dụ: điều hòa, nóng lạnh, giường, tủ; không có tủ lạnh)"
+                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white focus:ring-2 focus:ring-sky-500 font-sans"
+                      />
+                    </div>
                   </div>
 
                   {/* Chi tiết Tiếng Việt */}

@@ -70,14 +70,15 @@ export function InboxView({
     setTimeout(() => setIsRefreshing(false), 800);
   };
 
-  function normalizeHandoverCondition(val?: string | null): string {
-    if (!val) return "basic_unfurnished";
+  function normalizeFurnitureStatus(val?: string | null): string {
+    if (!val) return "chưa rõ";
     const s = String(val).toLowerCase().trim();
-    if (s === "bare_shell" || s.includes("thô") || s.includes("毛坯")) return "bare_shell";
-    if (s === "fully_furnished" || s.includes("full") || s.includes("đầy đủ") || s.includes("精装") || s.includes("furnished")) return "fully_furnished";
-    if (s === "partially_furnished" || s.includes("liền tường") || s.includes("cơ bản") || s.includes("bán hoàn thiện")) return "partially_furnished";
-    if (s === "basic_unfurnished" || s.includes("không đồ") || s.includes("nhà trống") || s.includes("chưa đồ") || s.includes("简装")) return "basic_unfurnished";
-    return "basic_unfurnished";
+    if (s.includes("cơ bản") || s.includes("không full") || s === "partially_furnished") return "cơ bản";
+    if (s.includes("full") || s.includes("đầy đủ") || s === "fully_furnished") return "đầy đủ nội thất";
+    if (s.includes("không nội thất") || s.includes("không đồ") || s.includes("nhà trống") || s === "basic_unfurnished") return "không nội thất";
+    if (s.includes("thô") || s === "bare_shell") return "bàn giao thô";
+    if (s === "chưa rõ" || s === "unknown") return "chưa rõ";
+    return s;
   }
 
   function extractFormData(listing: any) {
@@ -98,8 +99,15 @@ export function InboxView({
       price_text: listing.price_text || listing.ai_extracted?.price_text || "",
       landlord_commission_text: listing.landlord_commission_text || "",
       our_share_text: listing.our_share_text || "",
-      handover_condition: normalizeHandoverCondition(
-        listing.handover_condition || listing.ai_extracted?.handover_condition
+      furniture_status: normalizeFurnitureStatus(
+        listing.key_details?.furniture_status || listing.handover_condition || listing.ai_extracted?.furniture_status
+      ),
+      furniture_list:
+        listing.key_details?.furniture_list ||
+        listing.ai_extracted?.furniture_list ||
+        "",
+      handover_condition: normalizeFurnitureStatus(
+        listing.key_details?.furniture_status || listing.handover_condition || listing.ai_extracted?.furniture_status
       ),
       details_vi: listing.key_details?.vi || "",
       details_zh: listing.key_details?.zh || "",
@@ -156,7 +164,9 @@ export function InboxView({
               vi: formState.details_vi,
               zh: formState.details_zh,
               en: formState.details_en,
-              handover_condition: formState.handover_condition,
+              furniture_status: formState.furniture_status || formState.handover_condition || "chưa rõ",
+              furniture_list: formState.furniture_list || "",
+              handover_condition: formState.furniture_status || formState.handover_condition || "chưa rõ",
             },
           },
         }),
@@ -585,6 +595,22 @@ export function InboxView({
                     </div>
 
                     <div className="space-y-2 text-xs">
+                      {/* Hiển thị trực tiếp 2 dòng Nội thất & Danh sách nội thất */}
+                      <div className="p-2.5 rounded-lg bg-sky-50/70 border border-sky-200 text-xs space-y-1.5">
+                        <div>
+                          <span className="font-bold text-sky-900 block mb-0.5">Nội thất:</span>
+                          <span className="font-semibold text-sky-800 bg-white px-2 py-0.5 rounded border border-sky-200 inline-block">
+                            {formState.furniture_status || formState.handover_condition || "chưa rõ"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="font-bold text-sky-900 block mb-0.5">Danh sách nội thất:</span>
+                          <span className="text-slate-700 bg-white p-2 rounded border border-sky-200 block font-mono text-[11px] whitespace-pre-wrap">
+                            {formState.furniture_list || "— (Không liệt kê)"}
+                          </span>
+                        </div>
+                      </div>
+
                       {formState.details_vi && (
                         <div className="p-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs">
                           <span className="font-bold text-sky-800 text-[10px] uppercase tracking-wide block mb-0.5">Tiếng Việt (VI):</span>
@@ -717,20 +743,43 @@ export function InboxView({
                     </div>
 
                     {/* TRỤ CỘT 3: Hiện trạng bàn giao (Strict Handover Enum) */}
-                    <div>
-                      <label className="text-[11px] font-semibold text-slate-600 block mb-1">
-                        {t("inbox.handoverCondition")}
-                      </label>
-                      <select
-                        value={formState.handover_condition}
-                        onChange={(e) => setFormState({ ...formState, handover_condition: e.target.value })}
-                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white font-medium text-slate-800"
-                      >
-                        <option value="bare_shell">{t("inbox.handoverBareShell")}</option>
-                        <option value="basic_unfurnished">{t("inbox.handoverBasicUnfurnished")}</option>
-                        <option value="partially_furnished">{t("inbox.handoverPartiallyFurnished")}</option>
-                        <option value="fully_furnished">{t("inbox.handoverFullyFurnished")}</option>
-                      </select>
+                    {/* 2 Dòng: Nội thất & Danh sách nội thất nguyên mẫu */}
+                    <div className="space-y-2 p-3 bg-slate-50/80 rounded-xl border border-slate-200">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                          Nội thất:
+                        </label>
+                        <select
+                          value={formState.furniture_status || formState.handover_condition || "chưa rõ"}
+                          onChange={(e) =>
+                            setFormState({
+                              ...formState,
+                              furniture_status: e.target.value,
+                              handover_condition: e.target.value,
+                            })
+                          }
+                          className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white font-medium text-slate-800"
+                        >
+                          <option value="cơ bản">cơ bản</option>
+                          <option value="đầy đủ nội thất">đầy đủ nội thất</option>
+                          <option value="không nội thất">không nội thất</option>
+                          <option value="bàn giao thô">bàn giao thô</option>
+                          <option value="chưa rõ">chưa rõ</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                          Danh sách nội thất:
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={formState.furniture_list || ""}
+                          onChange={(e) => setFormState({ ...formState, furniture_list: e.target.value })}
+                          placeholder="Nguyên mẫu các món đồ trong tin nhắn (ví dụ: điều hòa, nóng lạnh, giường, tủ; không có tủ lạnh)"
+                          className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white focus:ring-2 focus:ring-sky-500 font-sans"
+                        />
+                      </div>
                     </div>
 
                     {/* Cụm Đơn giá chào & Cách tính giá */}

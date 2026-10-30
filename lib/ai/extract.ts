@@ -28,6 +28,8 @@ export interface ExtractedProperty {
   our_share_percent: number | null;
   our_share_text: string | null;
   handover_condition?: string | null;
+  furniture_status?: string | null;
+  furniture_list?: string | null;
   rental_options?: {
     name: string;
     rentable_area_m2?: number | null;
@@ -108,12 +110,17 @@ QUY TẮC CỐT LÕI:
        -> RÀNG BUỘC HÌNH HỌC: Với nhà nhiều tầng, floor_area_m2 không bao giờ được lớn hơn total_lease_area_m2.
      * Giữ chính xác từng mét vuông số lẻ (ví dụ: 213m2 là 213, không được làm tròn thành 210 hay 215).
 
-   - BỘ HIỆN TRẠNG BÀN GIAO (handover_condition - BẮT BUỘC CHỌN 1 TRONG 4 MÃ ENUM):
-     * "fully_furnished": Đầy đủ nội thất, full đồ, full nội thất, full option
-     * "partially_furnished": Nội thất cơ bản, đồ liền tường, đã có bếp/điều hòa
-     * "basic_unfurnished": Hoàn thiện cơ bản, không đồ, nhà trống, chưa có nội thất
-     * "bare_shell": Bàn giao thô, nhà thô, chưa hoàn thiện trần sàn đèn
-     TUYỆT ĐỐI KHÔNG trả về chuỗi tiếng Việt như "Full nội thất" vào trường handover_condition, BẮT BUỘC dùng đúng 4 mã enum trên!
+   - NỘI THẤT & DANH SÁCH MÓN ĐỒ (Trích xuất nguyên mẫu câu chữ tiếng Việt):
+     * "furniture_status": Điền trực tiếp chữ tiếng Việt (Chỉ chọn 1 trong 5 giá trị):
+       - "đầy đủ nội thất": Khi nguồn ghi rõ "full nội thất", "full đồ", "full option", "đầy đủ nội thất", "đủ đồ".
+       - "cơ bản": Khi nguồn ghi "nội thất cơ bản", "đồ cơ bản", "không full", "bán hoàn thiện". TUYỆT ĐỐI KHÔNG DỰA VÀO SỐ LƯỢNG ĐỒ ĐƯỢC LIỆT KÊ ĐỂ TỰ ĐỔI TỪ CƠ BẢN THÀNH FULL! Dù liệt kê bao nhiêu món đồ đi nữa, hễ có chữ "cơ bản/không full" thì bắt buộc ghi "cơ bản".
+       - "không nội thất": Khi nguồn ghi rõ "không nội thất", "không đồ", "nhà trống".
+       - "bàn giao thô": Khi nguồn ghi rõ "bàn giao thô", "nhà thô".
+       - "chưa rõ": Khi tin nhắn hoàn toàn KHÔNG NHẮC GÌ đến nội thất (tin này vẫn nhập bình thường, không dừng lại).
+     * "furniture_list": Trích xuất NGUYÊN MẪU danh sách các món đồ được liệt kê trong tin nhắn (ví dụ: "điều hòa, nóng lạnh, giường, tủ lạnh").
+       - Nguồn nói rõ không có món nào thì ghi rõ đúng chữ đó (ví dụ: "không có tủ lạnh", "chưa có giường").
+       - Không nhắc đến không có nghĩa là không có (tuyệt đối không tự suy đoán thêm món nào).
+       - Nếu tin nhắn không liệt kê món đồ nào thì để null hoặc "".
 
    - QUY TẮC BẢO LƯU ĐIỀU KIỆN CẤM & NGÀNH NGHỀ HẠN CHẾ (NEGATIVE CONSTRAINTS):
      * Nếu tin nhắn có ghi chú hạn chế / ngành cấm của chủ nhà như:
@@ -246,7 +253,14 @@ ${rawText}`;
                     handover_condition: {
                       type: Type.STRING,
                       nullable: true,
-                      enum: ["bare_shell", "basic_unfurnished", "partially_furnished", "fully_furnished"],
+                    },
+                    furniture_status: {
+                      type: Type.STRING,
+                      enum: ["đầy đủ nội thất", "cơ bản", "không nội thất", "bàn giao thô", "chưa rõ"],
+                    },
+                    furniture_list: {
+                      type: Type.STRING,
+                      nullable: true,
                     },
                     rental_options: {
                       type: Type.ARRAY,
@@ -316,28 +330,23 @@ ${rawText}`;
 function postProcessListing(prop: ExtractedProperty, fullText: string): ExtractedProperty {
   const text = `${prop.source_text_snippet || ""} ${fullText} ${prop.key_details?.vi || ""}`;
 
-  // 1. Chuẩn hóa handover_condition
-  if (prop.handover_condition) {
-    const hc = String(prop.handover_condition).toLowerCase();
-    if (hc.includes("full") || hc.includes("đầy đủ") || hc.includes("精装") || hc === "fully_furnished") {
-      prop.handover_condition = "fully_furnished";
-    } else if (hc.includes("liền tường") || hc.includes("cơ bản") || hc === "partially_furnished") {
-      prop.handover_condition = "partially_furnished";
-    } else if (hc.includes("thô") || hc.includes("毛坯") || hc === "bare_shell") {
-      prop.handover_condition = "bare_shell";
-    } else if (hc.includes("không đồ") || hc.includes("nhà trống") || hc === "basic_unfurnished") {
-      prop.handover_condition = "basic_unfurnished";
-    }
-  } else {
-    // Tự động suy luận từ văn bản nếu AI bỏ trống
-    if (/full\s*(?:nội\s*thất|đồ)/i.test(text)) {
-      prop.handover_condition = "fully_furnished";
-    } else if (/bàn\s*giao\s*thô|nhà\s*thô/i.test(text)) {
-      prop.handover_condition = "bare_shell";
-    } else if (/không\s*đồ|nhà\s*trống|chưa\s*có\s*nội\s*thất/i.test(text)) {
-      prop.handover_condition = "basic_unfurnished";
-    }
+  // 1. Chuẩn hóa furniture_status & handover_condition theo đúng 3 quy tắc
+  if (/nội\s*thất\s*cơ\s*bản|đồ\s*cơ\s*bản|không\s*full/i.test(text)) {
+    // Quy tắc 1: Có "cơ bản / không full" thì tuyệt đối là "cơ bản", không cho đổi thành full
+    prop.furniture_status = "cơ bản";
+  } else if (/full\s*(?:nội\s*thất|đồ|option)|đầy\s*đủ\s*(?:nội\s*thất|đồ)/i.test(text)) {
+    prop.furniture_status = "đầy đủ nội thất";
+  } else if (/không\s*nội\s*thất|không\s*đồ|nhà\s*trống/i.test(text)) {
+    // Quy tắc 3: Ghi rõ không có nội thất -> "không nội thất"
+    prop.furniture_status = "không nội thất";
+  } else if (/bàn\s*giao\s*thô|nhà\s*thô/i.test(text)) {
+    prop.furniture_status = "bàn giao thô";
+  } else if (!prop.furniture_status || prop.furniture_status === "unknown" || prop.furniture_status === "chưa rõ") {
+    // Quy tắc 3: Không nói gì -> "chưa rõ"
+    prop.furniture_status = "chưa rõ";
   }
+
+  prop.handover_condition = prop.furniture_status;
 
   // 2. Fallback giá tiền nếu price_amount bị null/0 mà trong văn bản có giá
   if (!prop.price_amount || prop.price_amount <= 0) {
