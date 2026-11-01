@@ -143,9 +143,9 @@ export async function POST(req: NextRequest) {
 
       const subId = (ingestResult as any)?.submission_id;
 
-      // Gia hạn Cửa sổ gom tin văn bản (Debounce Window 35 giây) cho đợt gửi này
+      // Gia hạn Cửa sổ gom tin văn bản (Debounce Window 25 giây) cho đợt gửi này
       if (subId) {
-        const debouncedCloseAt = new Date(Date.now() + 35 * 1000).toISOString();
+        const debouncedCloseAt = new Date(Date.now() + 25 * 1000).toISOString();
         await supabaseAdmin
           .from("submissions")
           .update({
@@ -175,29 +175,45 @@ export async function POST(req: NextRequest) {
             );
           }
 
-          // 2. Kích hoạt bộ đếm thời gian tự động xử lý Batch sau 35 giây
+          // 2. Chờ 25 giây gom tin nhắn liên tiếp và tự động bóc tách (await Promise đảm bảo Serverless không bị freeze)
           if (subId) {
-            setTimeout(async () => {
-              try {
-                const sAdmin = createAdminClient();
-                const { data: curSub } = await sAdmin
-                  .from("submissions")
-                  .select("id, status, close_at")
-                  .eq("id", subId)
-                  .single();
+            await new Promise((resolve) => setTimeout(resolve, 25000));
+            try {
+              const sAdmin = createAdminClient();
+              const { data: curSub } = await sAdmin
+                .from("submissions")
+                .select("id, status, close_at, ai_status")
+                .eq("id", subId)
+                .single();
 
-                // Nếu submission vẫn đang 'queued' và đã qua thời điểm close_at (không có tin mới gửi thêm)
-                if (curSub && curSub.status === "queued") {
-                  const closeAtMs = new Date(curSub.close_at).getTime();
-                  if (Date.now() >= closeAtMs - 2000) {
-                    console.log(`[Debounce Ingestion Timer] Đã hết 35s chờ, bắt đầu bóc tách văn bản batch ${subId}...`);
+              // Nếu submission vẫn đang 'queued' và chưa ai xử lý
+              if (
+                curSub &&
+                curSub.status === "queued" &&
+                curSub.ai_status !== "processing" &&
+                curSub.ai_status !== "done"
+              ) {
+                const closeAtMs = new Date(curSub.close_at).getTime();
+                // Chỉ kích hoạt nếu đã qua close_at (không có tin mới gửi thêm trong 25 giây)
+                if (Date.now() >= closeAtMs - 1500) {
+                  const { data: locked } = await sAdmin
+                    .from("submissions")
+                    .update({ ai_status: "processing", updated_at: new Date().toISOString() })
+                    .eq("id", subId)
+                    .eq("status", "queued")
+                    .neq("ai_status", "processing")
+                    .select("id")
+                    .maybeSingle();
+
+                  if (locked) {
+                    console.log(`[Webhook Background Worker] Đã đủ 25s gom tin, bắt đầu bóc tách batch ${subId}...`);
                     await processBatchSubmission(subId);
                   }
                 }
-              } catch (timerErr) {
-                console.error("[Debounce Ingestion Timer Error]:", timerErr);
               }
-            }, 35000);
+            } catch (timerErr) {
+              console.error("[Webhook Background Worker Error]:", timerErr);
+            }
           }
         } catch (bgErr) {
           console.error("[Webhook Background Task Error]:", bgErr);
