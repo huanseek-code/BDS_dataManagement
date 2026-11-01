@@ -111,7 +111,7 @@ export type Database = {
           code: string
           created_at: string
           district_legacy: string | null
-          floor_area_m2: number | null
+          floor_area_m2: string | number | null
           house_number: string | null
           id: string
           key_details: Json
@@ -144,7 +144,7 @@ export type Database = {
           code?: string
           created_at?: string
           district_legacy?: string | null
-          floor_area_m2?: number | null
+          floor_area_m2?: string | number | null
           house_number?: string | null
           id?: string
           key_details?: Json
@@ -177,7 +177,7 @@ export type Database = {
           code?: string
           created_at?: string
           district_legacy?: string | null
-          floor_area_m2?: number | null
+          floor_area_m2?: string | number | null
           house_number?: string | null
           id?: string
           key_details?: Json
@@ -222,7 +222,7 @@ export type Database = {
           change_history: Json
           created_at: string
           district_legacy: string | null
-          floor_area_m2: number | null
+          floor_area_m2: string | number | null
           house_number: string | null
           id: string
           key_details: Json
@@ -260,7 +260,7 @@ export type Database = {
           change_history?: Json
           created_at?: string
           district_legacy?: string | null
-          floor_area_m2?: number | null
+          floor_area_m2?: string | number | null
           house_number?: string | null
           id?: string
           key_details?: Json
@@ -298,7 +298,7 @@ export type Database = {
           change_history?: Json
           created_at?: string
           district_legacy?: string | null
-          floor_area_m2?: number | null
+          floor_area_m2?: string | number | null
           house_number?: string | null
           id?: string
           key_details?: Json

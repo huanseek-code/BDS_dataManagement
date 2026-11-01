@@ -2,7 +2,7 @@ import "server-only";
 import { Type } from "@google/genai";
 import { executeWithKeyRotation } from "./key-manager";
 import { ExtractedProperty } from "./extract";
-import { getGoldenSamplesForPrompt, verifyVerbatimSpan, detectPricePeriod } from "./golden-samples";
+import { getGoldenSamplesForPrompt, verifyVerbatimSpan, detectPricePeriod, extractMultiFloorAreas } from "./golden-samples";
 
 export interface BatchTimelineItem {
   msg_id: string;
@@ -73,7 +73,14 @@ NGUYÊN TẮC CỐT LÕI - BÓC TÁCH NGUYÊN GỐC CHỮ TRONG TIN NHẮN (STRI
    - Trích xuất NGUYÊN MẪU cụm từ chỉ loại hình BĐS có trong tin nhắn dưới dạng tiếng Việt (ví dụ: ["Nhà liền kề"], ["Nhà mặt phố"], ["Căn hộ chung cư"], ["Biệt thự"], ["Kho xưởng"], ["Văn phòng"], ["Mặt bằng kinh doanh"]...).
    - TUYỆT ĐỐI KHÔNG DỊCH sang tiếng Anh (không dùng "townhouse", "apartment", "villa"...).
 
-4. NỘI THẤT & DANH SÁCH MÓN ĐỒ (VERBATIM SPAN EXTRACTION - TRÍCH NGUYÊN GỐC TỪNG CHỮ):
+4. DIỆN TÍCH MỖI TẦNG (floor_area_m2) & TỔNG DIỆN TÍCH (total_lease_area_m2):
+   - "total_lease_area_m2": Luôn là TỔNG TOÀN BỘ DIỆN TÍCH CHO THUÊ (ví dụ: 180m2 x 8 tầng = 1440; hoặc Tầng 1: 50m, Tầng 2: 70m, Tầng 3: 80m -> Tổng = 50 + 70 + 80 = 200).
+   - "floor_area_m2" (DIỆN TÍCH MỖI TẦNG):
+     * NẾU CÁC TẦNG ĐỀU NHAU (hoặc nhà 1 tầng, chung cư, kho xưởng): Điền 1 con số diện tích mỗi tầng (ví dụ: "180m2 x 8 tầng" -> "180", "90m2 x 5 tầng" -> "90", "63m2" -> "63").
+     * NẾU DIỆN TÍCH CÁC TẦNG KHÁC NHAU: Liệt kê diện tích từng tầng cách nhau bằng dấu phẩy theo thứ tự từ tầng 1 lên (ví dụ: "Tầng 1: 50m, Tầng 2: 70m, Tầng 3: 80m" -> điền "50, 70, 80").
+     * TUYỆT ĐỐI KHÔNG chỉ lấy mỗi tầng 1 mà bỏ sót các tầng khác khi các tầng có diện tích khác nhau!
+
+5. NỘI THẤT & DANH SÁCH MÓN ĐỒ (VERBATIM SPAN EXTRACTION - TRÍCH NGUYÊN GỐC TỪNG CHỮ):
    - "furniture_status": CẮT ĐÚNG TỪ/CỤM TỪ NGUYÊN GỐC trong tin nhắn thể hiện hiện trạng nội thất (ví dụ: "đủ đồ", "full đồ", "đồ cơ bản", "full gỗ", "nhà trống", "bàn giao thô", "nguyên bản cđt"...).
      * TUYỆT ĐỐI KHÔNG TỰ QUY ĐỔI (ví dụ: tin ghi "đủ đồ" thì trích đúng "đủ đồ", CẤM đổi thành "đầy đủ nội thất").
      * NẾU TIN KHÔNG CÓ CỤM TỪ NÀO CHỈ HIỆN TRẠNG (ví dụ: chỉ liệt kê món đồ "Dh, nl, giường, bếp" hoặc không nhắc gì): BẮT BUỘC ĐỂ NULL, TUYỆT ĐỐI KHÔNG TỰ ĐẶT TỪ "chưa rõ" VÀO ĐÂY!
@@ -152,7 +159,11 @@ ${goldenSamplesText}
                       type: Type.ARRAY,
                       items: { type: Type.STRING },
                     },
-                    floor_area_m2: { type: Type.NUMBER, nullable: true },
+                    floor_area_m2: {
+                      type: Type.STRING,
+                      nullable: true,
+                      description: "Diện tích mỗi tầng. Nếu các tầng bằng nhau hoặc nhà 1 tầng: ghi 1 số (vd: '180', '90'). Nếu các tầng khác nhau: liệt kê cách nhau bằng dấu phẩy theo thứ tự từ tầng 1 lên (vd: '50, 70, 80').",
+                    },
                     total_lease_area_m2: { type: Type.NUMBER, nullable: true },
                     price_amount: { type: Type.NUMBER, nullable: true },
                     price_currency: { type: Type.STRING },
@@ -270,17 +281,26 @@ function postProcessBatchListing(prop: any, snippetText: string): ExtractedPrope
     }
   }
 
-  // 3. Fallback diện tích đa tầng: "180m2 x 8 tầng"
-  if (!prop.floor_area_m2) {
+  // 3. Fallback diện tích đa tầng & diện tích từng tầng
+  const multiFloorAreas = extractMultiFloorAreas(text);
+  if (multiFloorAreas) {
+    // Nếu có bóc tách đa tầng cụ thể (vd: T1: 50m, T2: 70m, T3: 80m -> '50, 70, 80')
+    prop.floor_area_m2 = multiFloorAreas.floorAreaStr;
+    if (!prop.total_lease_area_m2 || prop.total_lease_area_m2 <= 0) {
+      prop.total_lease_area_m2 = multiFloorAreas.totalArea;
+    }
+  } else if (!prop.floor_area_m2) {
     const multiFloorMatch = text.match(/(\d+(?:[.,]\d+)?)\s*m2?\s*[x*]\s*(\d+)\s*tầng/i);
     if (multiFloorMatch) {
       const perFloor = parseFloat(multiFloorMatch[1].replace(",", "."));
       const floors = parseInt(multiFloorMatch[2], 10);
-      prop.floor_area_m2 = perFloor;
+      prop.floor_area_m2 = String(perFloor);
       if (!prop.total_lease_area_m2) {
         prop.total_lease_area_m2 = Math.round(perFloor * floors);
       }
     }
+  } else if (typeof prop.floor_area_m2 === "number") {
+    prop.floor_area_m2 = String(prop.floor_area_m2);
   }
 
   // 4. Bảo tồn điều kiện cấm "không làm hàng ăn"

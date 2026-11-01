@@ -1,7 +1,7 @@
 import "server-only";
 import { Type } from "@google/genai";
 import { executeWithKeyRotation } from "./key-manager";
-import { getGoldenSamplesForPrompt, verifyVerbatimSpan, detectPricePeriod } from "./golden-samples";
+import { getGoldenSamplesForPrompt, verifyVerbatimSpan, detectPricePeriod, extractMultiFloorAreas } from "./golden-samples";
 
 export interface ExtractedProperty {
   source_text_snippet: string | null;
@@ -12,7 +12,7 @@ export interface ExtractedProperty {
   district_legacy: string | null;
   province: string | null;
   property_types: string[]; // factory, warehouse, office, retail, townhouse, villa, apartment, land, hotel, other
-  floor_area_m2: number | null;
+  floor_area_m2: string | number | null;
   total_lease_area_m2: number | null;
   price_amount: number | null;
   price_currency: string;
@@ -103,12 +103,12 @@ QUY TẮC CỐT LÕI:
    - BẮT BUỘC phải gán ít nhất 1 loại hình phù hợp, TUYỆT ĐỐI KHÔNG để mảng rỗng [].
 
 5. NGUYÊN TẮC BẢO TOÀN DỮ LIỆU GỐC, KHÔNG GIAN HÌNH HỌC & TỪ ĐIỂN CHUẨN (STRICT FIDELITY & GLOSSARY):
-   - DIỆN TÍCH ĐA TẦNG (floor_area_m2 vs total_lease_area_m2):
-     * KHI GẶP: "tổng diện tích", "tổng DT", "diện tích sử dụng", "tổng sàn" hoặc tòa nhà nhiều tầng (ví dụ: 180m2 x 8 tầng, Tổng diện tích 150m², Tầng 1: 26m², Tầng 2-4: 40m²/sàn):
-       -> BẮT BUỘC ghi tổng diện tích vào "total_lease_area_m2" (ví dụ: 180 * 8 = 1440, hoặc 150).
-       -> "floor_area_m2" BẮT BUỘC LẤY diện tích 1 sàn (ví dụ: 180m2 x 8 tầng -> floor_area_m2: 180, total_lease_area_m2: 1440).
-       -> TUYỆT ĐỐI CẤM để trống floor_area_m2 nếu đã có thông số diện tích 1 tầng!
-       -> RÀNG BUỘC HÌNH HỌC: Với nhà nhiều tầng, floor_area_m2 không bao giờ được lớn hơn total_lease_area_m2.
+   - DIỆN TÍCH MỖI TẦNG (floor_area_m2) & TỔNG DIỆN TÍCH (total_lease_area_m2):
+     * "total_lease_area_m2": Luôn là TỔNG TOÀN BỘ DIỆN TÍCH CHO THUÊ (ví dụ: 180m2 x 8 tầng = 1440; hoặc Tầng 1: 50m, Tầng 2: 70m, Tầng 3: 80m -> Tổng = 50 + 70 + 80 = 200).
+     * "floor_area_m2" (DIỆN TÍCH MỖI TẦNG):
+       - NẾU CÁC TẦNG ĐỀU NHAU (hoặc nhà 1 tầng, chung cư, kho xưởng): Điền 1 con số diện tích mỗi tầng (ví dụ: "180m2 x 8 tầng" -> "180", "90m2 x 5 tầng" -> "90", "63m2" -> "63").
+       - NẾU DIỆN TÍCH CÁC TẦNG KHÁC NHAU: Liệt kê diện tích từng tầng cách nhau bằng dấu phẩy theo thứ tự từ tầng 1 lên (ví dụ: "Tầng 1: 50m, Tầng 2: 70m, Tầng 3: 80m" -> điền "50, 70, 80").
+       - TUYỆT ĐỐI KHÔNG chỉ lấy mỗi tầng 1 mà bỏ sót các tầng khác khi các tầng có diện tích khác nhau!
      * Giữ chính xác từng mét vuông số lẻ (ví dụ: 213m2 là 213, không được làm tròn thành 210 hay 215).
 
    - NỘI THẤT & DANH SÁCH MÓN ĐỒ (VERBATIM SPAN EXTRACTION - TRÍCH NGUYÊN GỐC TỪNG CHỮ):
@@ -232,7 +232,11 @@ ${rawText}`;
                       type: Type.ARRAY,
                       items: { type: Type.STRING },
                     },
-                    floor_area_m2: { type: Type.NUMBER, nullable: true },
+                    floor_area_m2: {
+                      type: Type.STRING,
+                      nullable: true,
+                      description: "Diện tích mỗi tầng. Nếu các tầng bằng nhau hoặc nhà 1 tầng: ghi 1 số (vd: '180', '90'). Nếu các tầng khác nhau: liệt kê cách nhau bằng dấu phẩy theo thứ tự từ tầng 1 lên (vd: '50, 70, 80').",
+                    },
                     total_lease_area_m2: { type: Type.NUMBER, nullable: true },
                     price_amount: { type: Type.NUMBER, nullable: true },
                     price_currency: { type: Type.STRING },
@@ -366,17 +370,26 @@ function postProcessListing(prop: ExtractedProperty, fullText: string): Extracte
     }
   }
 
-  // 3. Fallback diện tích đa tầng: "180m2 x 8 tầng", "180 m2 * 8 tầng", "180m x 8 tầng"
-  if (!prop.floor_area_m2) {
+  // 3. Fallback diện tích đa tầng & diện tích từng tầng
+  const multiFloorAreas = extractMultiFloorAreas(text);
+  if (multiFloorAreas) {
+    // Nếu có bóc tách đa tầng cụ thể (vd: T1: 50m, T2: 70m, T3: 80m -> '50, 70, 80')
+    prop.floor_area_m2 = multiFloorAreas.floorAreaStr;
+    if (!prop.total_lease_area_m2 || prop.total_lease_area_m2 <= 0) {
+      prop.total_lease_area_m2 = multiFloorAreas.totalArea;
+    }
+  } else if (!prop.floor_area_m2) {
     const multiFloorMatch = text.match(/(\d+(?:[.,]\d+)?)\s*m2?\s*[x*]\s*(\d+)\s*tầng/i);
     if (multiFloorMatch) {
       const perFloor = parseFloat(multiFloorMatch[1].replace(",", "."));
       const floors = parseInt(multiFloorMatch[2], 10);
-      prop.floor_area_m2 = perFloor;
+      prop.floor_area_m2 = String(perFloor);
       if (!prop.total_lease_area_m2) {
         prop.total_lease_area_m2 = Math.round(perFloor * floors);
       }
     }
+  } else if (typeof prop.floor_area_m2 === "number") {
+    prop.floor_area_m2 = String(prop.floor_area_m2);
   }
 
   // 4. Bảo tồn điều kiện cấm "không làm hàng ăn"

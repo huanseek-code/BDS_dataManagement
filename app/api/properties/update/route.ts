@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
       property_types: Array.isArray(propertyData.property_types)
         ? propertyData.property_types
         : currentProp.property_types,
-      floor_area_m2: propertyData.floor_area_m2 ? Number(propertyData.floor_area_m2) : null,
+      floor_area_m2: propertyData.floor_area_m2 ? String(propertyData.floor_area_m2).trim() : null,
       total_lease_area_m2: propertyData.total_lease_area_m2 ? Number(propertyData.total_lease_area_m2) : null,
       price_amount: propertyData.price_amount ? Number(propertyData.price_amount) : null,
       price_currency: propertyData.price_currency || currentProp.price_currency || "VND",

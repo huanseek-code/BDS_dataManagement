@@ -162,6 +162,28 @@ export const STATIC_GOLDEN_SAMPLES: GoldenSample[] = [
     }
   },
   {
+    pattern_type: "different_floor_areas",
+    description: "Nhà nhiều tầng có diện tích mỗi tầng khác nhau -> floor_area_m2 liệt kê cách nhau dấu phẩy '50, 70, 80'. Tổng DT = 200. Giá '39 triệu' không có chữ tháng -> price_period: null",
+    raw_message: "Cho thuê nhà nguyên căn mặt phố Thi Sách, Quận Hai Bà Trưng\nMô Tả :\n- Mặt phố ô tô tránh nhau, ô tô đỗ cửa, có vỉa hè\n- Phù hợp: Văn phòng, showroom/giới thiệu sản phẩm, trung tâm ngoại ngữ, phòng khám, kinh doanh online... (không làm hàng ăn)\n- Diện tích:\n+ Tầng 1: 50m, thông sàn\n+ Tầng 2: 70m, chia làm 2 phòng\n+ Tầng 3: 80m, thông sàn\n- Mặt tiền: 4.5m\n- Nội thất: Điều hòa\n- Điện nước: giá nhà nước\n- Thời gian nhận nhà: nhận luôn\n- Giá thuê: 39 triệu.",
+    expected_extraction: {
+      address_text: "Mặt phố Thi Sách, Quận Hai Bà Trưng",
+      property_types: ["Nhà mặt phố"],
+      floor_area_m2: "50, 70, 80",
+      total_lease_area_m2: 200,
+      price_amount: 39000000,
+      price_text: "39 triệu",
+      price_period: null,
+      price_basis: "Tổng căn",
+      furniture_status: null,
+      furniture_list: "Điều hòa",
+      key_details: {
+        vi: "Nhà nguyên căn mặt phố Thi Sách, Hai Bà Trưng, vỉa hè ô tô tránh, DT: T1 50m2, T2 70m2, T3 80m2, tổng 200m2, mặt tiền 4.5m, nội thất điều hòa, giá 39 triệu (chủ nhà không cho làm hàng ăn).",
+        en: "Whole townhouse Thi Sach street, Hai Ba Trung, pavement car access, Area: F1 50m2, F2 70m2, F3 80m2, total 200m2, frontage 4.5m, AC, 39m VND (no F&B allowed).",
+        zh: "施策街整栋临街房，海婆徵郡，人行道可避让车辆，面积：1层50平米、2层70平米、3层80平米，总200平米，门宽4.5米，带空调，租金3900万（房东禁止餐饮业）。"
+      }
+    }
+  },
+  {
     pattern_type: "phrase_full_go",
     description: "Nguồn ghi full gỗ -> furniture_status ghi đúng chữ full gỗ. Giá '11tr' không có tháng -> price_period: null",
     raw_message: "- S203 full gỗ 2N+1 giá 11tr - ngày 15/11 vào",
@@ -290,3 +312,57 @@ export function detectPricePeriod(
   // Nếu không có bất kỳ từ ngữ nào chỉ tháng/năm/bán -> Tuyệt đối không tự dịch nghĩa theo tháng!
   return null;
 }
+
+/**
+ * CHỐT CHẶN BÓC TÁCH DIỆN TÍCH TỪNG TẦNG (Multi-Floor Area Extractor)
+ * Nhận diện cấu trúc diện tích từng tầng:
+ * Ví dụ:
+ *  - Tầng 1: 50m, Tầng 2: 70m, Tầng 3: 80m -> "50, 70, 80"
+ *  - Tầng 1: 100m, Tầng 2: 100m -> "100" (các tầng đều nhau)
+ *  - T1: 50m2, T2 70m2, T3 80m2 -> "50, 70, 80"
+ */
+export function extractMultiFloorAreas(
+  text: string | null | undefined
+): { floorAreaStr: string; totalArea: number } | null {
+  if (!text) return null;
+
+  // Regex nhận diện các mẫu:
+  // "Tầng 1: 50m", "Tầng 1 - 50m", "Tầng 1 là 50m", "T1: 50m", "T1 50m2", "+ Tầng 1: 50m, thông sàn"
+  const floorRegex = /(?:tầng|t)\s*(\d+)[\s:là-]+(\d+(?:[.,]\d+)?)\s*m(?:2|²)?/gi;
+  const matches = [...text.matchAll(floorRegex)];
+
+  if (matches.length >= 2) {
+    const floorMap = new Map<number, string>();
+    for (const m of matches) {
+      const fNum = parseInt(m[1], 10);
+      const val = m[2].replace(",", ".");
+      // Bỏ qua tầng quá lớn vô lý (> 100 tầng) hoặc trùng tầng
+      if (!floorMap.has(fNum) && fNum > 0 && fNum <= 100) {
+        floorMap.set(fNum, val);
+      }
+    }
+
+    const sortedFloors = [...floorMap.entries()].sort((a, b) => a[0] - b[0]);
+    if (sortedFloors.length >= 2) {
+      const values = sortedFloors.map((e) => e[1]);
+      const numericValues = values.map((v) => parseFloat(v));
+      const allEqual = numericValues.every((v) => v === numericValues[0]);
+      const totalArea = Math.round(numericValues.reduce((sum, v) => sum + v, 0) * 100) / 100;
+
+      if (allEqual) {
+        return {
+          floorAreaStr: values[0],
+          totalArea,
+        };
+      } else {
+        return {
+          floorAreaStr: values.join(", "),
+          totalArea,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+

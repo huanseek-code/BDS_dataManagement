@@ -144,7 +144,7 @@ export async function processBatchSubmission(
           district_legacy: prop.district_legacy || null,
           province: prop.province || null,
           property_types: prop.property_types || [],
-          floor_area_m2: prop.floor_area_m2 || null,
+          floor_area_m2: prop.floor_area_m2 ? String(prop.floor_area_m2).trim() : null,
           total_lease_area_m2: prop.total_lease_area_m2 || null,
           price_amount: prop.price_amount || null,
           price_currency: prop.price_currency || "VND",

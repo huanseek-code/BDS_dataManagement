@@ -40,7 +40,7 @@ export interface PropertyRow {
   district_legacy?: string | null;
   province?: string | null;
   property_types: string[];
-  floor_area_m2?: number | null;
+  floor_area_m2?: string | number | null;
   total_lease_area_m2?: number | null;
   price_amount?: number | null;
   price_currency: string;
@@ -216,7 +216,7 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
           propertyData: {
             ...editForm,
             property_types: typesArray,
-            floor_area_m2: editForm.floor_area_m2 ? Number(editForm.floor_area_m2) : null,
+            floor_area_m2: editForm.floor_area_m2 ? String(editForm.floor_area_m2).trim() : null,
             total_lease_area_m2: editForm.total_lease_area_m2 ? Number(editForm.total_lease_area_m2) : null,
             price_amount: editForm.price_amount ? Number(editForm.price_amount) : null,
             our_share_percent: editForm.our_share_percent ? Number(editForm.our_share_percent) : null,
@@ -250,7 +250,7 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
               ...item,
               ...editForm,
               property_types: editForm.property_types,
-              floor_area_m2: editForm.floor_area_m2 ? Number(editForm.floor_area_m2) : null,
+              floor_area_m2: editForm.floor_area_m2 ? String(editForm.floor_area_m2).trim() : null,
               total_lease_area_m2: editForm.total_lease_area_m2 ? Number(editForm.total_lease_area_m2) : null,
               price_amount: editForm.price_amount ? Number(editForm.price_amount) : null,
               key_details: {
@@ -1007,13 +1007,14 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
                     </div>
                     <div>
                       <label className="text-[11px] font-semibold text-slate-600 block mb-1">
-                        DT 1 tầng (m²)
+                        DT mỗi tầng (m²)
                       </label>
                       <input
-                        type="number"
+                        type="text"
                         value={editForm.floor_area_m2}
                         onChange={(e) => setEditForm({ ...editForm, floor_area_m2: e.target.value })}
-                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white"
+                        placeholder="80 hoặc 50, 70, 80..."
+                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white font-medium text-slate-800"
                       />
                     </div>
                   </div>

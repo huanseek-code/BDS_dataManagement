@@ -154,7 +154,7 @@ export function InboxView({
             ...formState,
             property_types: typesArray,
             total_lease_area_m2: formState.total_lease_area_m2 ? Number(formState.total_lease_area_m2) : null,
-            floor_area_m2: formState.floor_area_m2 ? Number(formState.floor_area_m2) : null,
+            floor_area_m2: formState.floor_area_m2 ? String(formState.floor_area_m2).trim() : null,
             price_amount: formState.price_amount ? Number(formState.price_amount) : null,
             price_basis: formState.price_basis || "total",
             price_period: formState.price_period || formState.price_period_text || null,
@@ -673,10 +673,11 @@ export function InboxView({
                           {t("inbox.floorArea")}
                         </label>
                         <input
-                          type="number"
+                          type="text"
                           value={formState.floor_area_m2}
                           onChange={(e) => setFormState({ ...formState, floor_area_m2: e.target.value })}
-                          className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white"
+                          placeholder="80 hoặc 50, 70, 80..."
+                          className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white font-medium text-slate-800"
                         />
                       </div>
                     </div>
