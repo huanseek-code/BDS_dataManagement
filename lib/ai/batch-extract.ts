@@ -61,22 +61,25 @@ NGUYÊN TẮC CỐT LÕI - BÓC TÁCH ĐẦY ĐỦ & GIỮ NGUYÊN BẢN TIN NH�
    - CHỈ TRÍCH XUẤT THÔNG TIN THỰC SỰ CÓ TRONG TIN NHẮN. NẾU THIẾU TRƯỜNG DỮ LIỆU CŨNG KHÔNG SAO: Nếu tin nhắn không nói rõ quận, phường, số nhà, thời hạn thuê, hoa hồng... -> BẮT BUỘC ĐỂ NULL HOẶC ĐỂ TRỐNG.
    - TUYỆT ĐỐI KHÔNG TỰ BỊA RA, KHÔNG SUY ĐOÁN những thông tin không có trong văn bản!
 
-2. PHÂN TÁCH ĐA CĂN BĐS (MULTI-PROPERTY SEPARATION):
-   - Nhận diện đúng có bao nhiêu căn BĐS độc lập trong đợt gửi (mỗi căn là một phần tử riêng trong mảng "properties").
-   - "source_text_snippet": BẮT BUỘC trích nguyên văn đoạn văn bản mô tả riêng của căn đó để người duyệt đối chiếu.
+2. PHÂN TÁCH ĐA CĂN BĐS (MULTI-PROPERTY SEPARATION) & DANH SÁCH GẠCH ĐẦU DÒNG:
+   - Khi đối tác gửi danh sách gồm nhiều dòng gạch đầu dòng '-' hoặc bullet point (ví dụ danh sách các căn Studio, 1N, 2N, 3N): BẮT BUỘC BÓC TÁCH TỪNG DÒNG THÀNH TỪNG CĂN ĐỘC LẬP trong mảng "properties", TUYỆT ĐỐI KHÔNG ĐƯỢC BỎ SÓT BẤT KỲ CĂN NÀO!
+   - LOẠI TRỪ TIN TÌM CĂN / NHU CẦU CỦA KHÁCH: Nếu tin nhắn thể hiện nhu cầu tìm thuê (ví dụ: "E tìm 1n/1n+ cho khách thuê", "khách e chiều 2h đi xem tìm 1pn+..."), đây là tin tìm căn của khách, KHÔNG PHẢI NGUỒN CĂN CHO THUÊ -> BỎ QUA, không đưa vào danh sách properties.
+   - "source_text_snippet": BẮT BUỘC trích nguyên văn đoạn văn bản mô tả riêng của chính căn đó để người duyệt đối chiếu.
 
 3. LOẠI HÌNH BĐS (property_types) - GIỮ NGUYÊN BẢN TIẾNG VIỆT:
    - Trích xuất NGUYÊN MẪU cụm từ chỉ loại hình BĐS có trong tin nhắn dưới dạng tiếng Việt (ví dụ: ["Nhà liền kề"], ["Nhà mặt phố"], ["Căn hộ chung cư"], ["Biệt thự"], ["Kho xưởng"], ["Văn phòng"], ["Mặt bằng kinh doanh"]...).
    - TUYỆT ĐỐI KHÔNG DỊCH sang tiếng Anh (không dùng "townhouse", "apartment", "villa"...).
 
-4. NỘI THẤT & DANH SÁCH MÓN ĐỒ (Trích xuất nguyên mẫu câu chữ tiếng Việt):
+4. NỘI THẤT & DANH SÁCH MÓN ĐỒ (STRICT FIDELITY - TUYỆT ĐỐI KHÔNG SUY DIỄN / KHÔNG TỰ BỊA):
    - "furniture_status": Điền trực tiếp chữ tiếng Việt (Chỉ chọn 1 trong 5 giá trị):
-     * "đầy đủ nội thất": Khi nguồn ghi rõ "full nội thất", "full đồ", "full option", "đầy đủ nội thất", "đủ đồ".
-     * "cơ bản": Khi nguồn ghi "nội thất cơ bản", "đồ cơ bản", "không full", "bán hoàn thiện". TUYỆT ĐỐI KHÔNG DỰA VÀO SỐ LƯỢNG ĐỒ ĐƯỢC LIỆT KÊ ĐỂ TỰ ĐỔI TỪ CƠ BẢN THÀNH FULL! Dù liệt kê bao nhiêu món đồ đi nữa, hễ có chữ "cơ bản/không full" thì bắt buộc ghi "cơ bản".
-     * "không nội thất": Khi nguồn ghi rõ "không nội thất", "không đồ", "nhà trống".
-     * "bàn giao thô": Khi nguồn ghi rõ "bàn giao thô", "nhà thô".
-     * "chưa rõ": Khi tin nhắn hoàn toàn KHÔNG NHẮC GÌ đến nội thất (tin này vẫn nhập bình thường, không dừng lại).
-   - "furniture_list": Trích xuất NGUYÊN MẪU danh sách các món đồ được liệt kê trong tin nhắn (ví dụ: "6 điều hoà, 6 nóng lạnh, thang máy tốc độ cao, tủ bếp").
+     * "đầy đủ nội thất": KHI VÀ CHỈ KHI nguồn ghi rõ: "full nội thất", "full đồ", "full option", "full gỗ", "đầy đủ nội thất", "đủ đồ".
+     * "cơ bản": KHI VÀ CHỈ KHI nguồn ghi rõ: "nội thất cơ bản", "đồ cơ bản", "không full", "bán hoàn thiện". TUYỆT ĐỐI KHÔNG DỰA VÀO SỐ LƯỢNG ĐỒ ĐƯỢC LIỆT KÊ ĐỂ TỰ ĐỔI TỪ CƠ BẢN THÀNH FULL! Dù liệt kê bao nhiêu món đồ đi nữa, hễ có chữ "cơ bản/không full" thì bắt buộc ghi "cơ bản".
+     * "không nội thất": KHI VÀ CHỈ KHI nguồn ghi rõ: "không nội thất", "không đồ", "nhà trống".
+     * "bàn giao thô": KHI VÀ CHỈ KHI nguồn ghi rõ: "bàn giao thô", "nhà thô".
+     * "chưa rõ": BẮT BUỘC CHỌN "chưa rõ" TRONG CẢ 2 TRƯỜNG HỢP SAU:
+       (a) Tin nhắn hoàn toàn KHÔNG NHẮC GÌ đến nội thất (ví dụ: tin chỉ có diện tích, số tầng, giá như Trần Vỹ -> furniture_status BẮT BUỘC LÀ "chưa rõ", TUYỆT ĐỐI KHÔNG ĐƯỢC TỰ SUY ĐOÁN LÀ "cơ bản"!).
+       (b) Tin nhắn CHỈ LIỆT KÊ TÊN THIẾT BỊ / MÓN ĐỒ mà KHÔNG CÓ từ khẳng định "full" hay "cơ bản" (ví dụ: chỉ ghi "Dh, nl, giường, bếp" hoặc "Dh âm trần, nl, THANG MÁY" hoặc "có bếp rèm" -> furniture_status BẮT BUỘC LÀ "chưa rõ", TUYỆT ĐỐI KHÔNG ĐƯỢC TỰ KẾT LUẬN LÀ "đầy đủ nội thất"!).
+   - "furniture_list": Trích xuất NGUYÊN MẪU danh sách các món đồ được liệt kê trong tin nhắn (ví dụ: "Dh, nl, giường, bếp", "Dh âm trần, nl, THANG MÁY", "có bếp rèm", "6 điều hoà, 6 nóng lạnh, tủ bếp").
      * Nguồn nói rõ không có món nào thì ghi rõ đúng câu chữ đó (ví dụ: "riêng tủ lạnh chưa có", "chưa có giường").
      * Không nhắc đến không có nghĩa là không có (tuyệt đối không tự suy đoán thêm món nào).
      * Nếu tin nhắn không liệt kê món đồ nào thì để null hoặc "".
@@ -124,6 +127,8 @@ NGUYÊN TẮC CỐT LÕI - BÓC TÁCH ĐẦY ĐỦ & GIỮ NGUYÊN BẢN TIN NH�
         model: modelId,
         contents,
         config: {
+          temperature: 0.0,
+          topP: 0.1,
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -205,8 +210,9 @@ NGUYÊN TẮC CỐT LÕI - BÓC TÁCH ĐẦY ĐỦ & GIỮ NGUYÊN BẢN TIN NH�
     const sanitizedProps: ExtractedProperty[] = [];
 
     // Hậu kiểm soát chất lượng (Deterministic Sanity Check Gate)
+    // Chỉ kiểm tra trên source_text_snippet của chính căn đó, tuyệt đối KHÔNG nối transcript chung
     for (const rawP of rawProps) {
-      const textContext = `${rawP.source_text_snippet || ""} ${transcript}`;
+      const textContext = rawP.source_text_snippet || "";
       const processed = postProcessBatchListing(rawP, textContext);
       sanitizedProps.push(processed);
     }
@@ -224,22 +230,21 @@ NGUYÊN TẮC CỐT LÕI - BÓC TÁCH ĐẦY ĐỦ & GIỮ NGUYÊN BẢN TIN NH�
 /**
  * Lớp bảo vệ hậu xử lý tất định cho từng căn trong Batch
  */
-function postProcessBatchListing(prop: any, text: string): ExtractedProperty {
-  const combined = `${prop.source_text_snippet || ""} ${text} ${prop.key_details?.vi || ""}`;
+function postProcessBatchListing(prop: any, snippetText: string): ExtractedProperty {
+  const text = `${prop.source_text_snippet || ""} ${snippetText || ""}`;
 
-  // 1. Chuẩn hóa furniture_status & handover_condition theo đúng 3 quy tắc
-  if (/nội\s*thất\s*cơ\s*bản|đồ\s*cơ\s*bản|không\s*full/i.test(combined)) {
-    // Quy tắc 1: Có "cơ bản / không full" thì tuyệt đối là "cơ bản", không cho đổi thành full
+  // 1. Chuẩn hóa furniture_status & handover_condition theo đúng nguyên tắc Strict Fidelity
+  // Chỉ nhận diện theo từ khóa khẳng định rõ ràng trong chính đoạn tin nhắn của căn này
+  if (/nội\s*thất\s*cơ\s*bản|đồ\s*cơ\s*bản|không\s*full/i.test(text)) {
     prop.furniture_status = "cơ bản";
-  } else if (/full\s*(?:nội\s*thất|đồ|option)|đầy\s*đủ\s*(?:nội\s*thất|đồ)/i.test(combined)) {
+  } else if (/full\s*(?:nội\s*thất|đồ|option|gỗ)|đầy\s*đủ\s*(?:nội\s*thất|đồ)|đủ\s*đồ/i.test(text)) {
     prop.furniture_status = "đầy đủ nội thất";
-  } else if (/không\s*nội\s*thất|không\s*đồ|nhà\s*trống/i.test(combined)) {
-    // Quy tắc 3: Ghi rõ không có nội thất -> "không nội thất"
+  } else if (/không\s*nội\s*thất|không\s*đồ|nhà\s*trống/i.test(text)) {
     prop.furniture_status = "không nội thất";
-  } else if (/bàn\s*giao\s*thô|nhà\s*thô/i.test(combined)) {
+  } else if (/bàn\s*giao\s*thô|nhà\s*thô/i.test(text)) {
     prop.furniture_status = "bàn giao thô";
-  } else if (!prop.furniture_status || prop.furniture_status === "unknown" || prop.furniture_status === "chưa rõ") {
-    // Quy tắc 3: Không nói gì -> "chưa rõ"
+  } else {
+    // Nếu tin nhắn chỉ liệt kê món đồ cụ thể (ví dụ "Dh, nl, giường, bếp") hoặc không nhắc gì -> bắt buộc "chưa rõ"
     prop.furniture_status = "chưa rõ";
   }
 
@@ -247,7 +252,7 @@ function postProcessBatchListing(prop: any, text: string): ExtractedProperty {
 
   // 2. Fallback giá tiền nếu price_amount rỗng
   if (!prop.price_amount || prop.price_amount <= 0) {
-    const priceMatch = combined.match(/(?:giá(?: thuê)?|chào)?\s*[:\s]*(\d+(?:[.,]\d+)?)\s*(tr(?:iệu)?|củ|tỷ|k|usd|\$)/i);
+    const priceMatch = text.match(/(?:giá(?: thuê)?|chào)?\s*[:\s]*(\d+(?:[.,]\d+)?)\s*(tr(?:iệu)?|củ|tỷ|k|usd|\$)/i);
     if (priceMatch) {
       const num = parseFloat(priceMatch[1].replace(",", "."));
       const unit = priceMatch[2].toLowerCase();
@@ -271,7 +276,7 @@ function postProcessBatchListing(prop: any, text: string): ExtractedProperty {
 
   // 3. Fallback diện tích đa tầng: "180m2 x 8 tầng"
   if (!prop.floor_area_m2) {
-    const multiFloorMatch = combined.match(/(\d+(?:[.,]\d+)?)\s*m2?\s*[x*]\s*(\d+)\s*tầng/i);
+    const multiFloorMatch = text.match(/(\d+(?:[.,]\d+)?)\s*m2?\s*[x*]\s*(\d+)\s*tầng/i);
     if (multiFloorMatch) {
       const perFloor = parseFloat(multiFloorMatch[1].replace(",", "."));
       const floors = parseInt(multiFloorMatch[2], 10);
@@ -283,7 +288,7 @@ function postProcessBatchListing(prop: any, text: string): ExtractedProperty {
   }
 
   // 4. Bảo tồn điều kiện cấm "không làm hàng ăn"
-  const foodBanMatch = combined.match(/không\s*(?:làm\s*)?(?:hàng\s*ăn|ăn\s*uống|kinh\s*doanh\s*ăn\s*uống|quán\s*ăn)/i);
+  const foodBanMatch = text.match(/không\s*(?:làm\s*)?(?:hàng\s*ăn|ăn\s*uống|kinh\s*doanh\s*ăn\s*uống|quán\s*ăn)/i);
   if (foodBanMatch && prop.key_details) {
     if (!/không\s*(?:làm\s*)?(?:hàng\s*ăn|ăn\s*uống)/i.test(prop.key_details.vi)) {
       prop.key_details.vi += " (Không làm hàng ăn/uống)";

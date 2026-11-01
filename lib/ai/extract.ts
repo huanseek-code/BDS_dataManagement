@@ -108,15 +108,17 @@ QUY TẮC CỐT LÕI:
        -> RÀNG BUỘC HÌNH HỌC: Với nhà nhiều tầng, floor_area_m2 không bao giờ được lớn hơn total_lease_area_m2.
      * Giữ chính xác từng mét vuông số lẻ (ví dụ: 213m2 là 213, không được làm tròn thành 210 hay 215).
 
-   - NỘI THẤT & DANH SÁCH MÓN ĐỒ (Trích xuất nguyên mẫu câu chữ tiếng Việt):
+   - NỘI THẤT & DANH SÁCH MÓN ĐỒ (STRICT FIDELITY - TUYỆT ĐỐI KHÔNG SUY DIỄN / KHÔNG TỰ BỊA):
      * "furniture_status": Điền trực tiếp chữ tiếng Việt (Chỉ chọn 1 trong 5 giá trị):
-       - "đầy đủ nội thất": Khi nguồn ghi rõ "full nội thất", "full đồ", "full option", "đầy đủ nội thất", "đủ đồ".
-       - "cơ bản": Khi nguồn ghi "nội thất cơ bản", "đồ cơ bản", "không full", "bán hoàn thiện". TUYỆT ĐỐI KHÔNG DỰA VÀO SỐ LƯỢNG ĐỒ ĐƯỢC LIỆT KÊ ĐỂ TỰ ĐỔI TỪ CƠ BẢN THÀNH FULL! Dù liệt kê bao nhiêu món đồ đi nữa, hễ có chữ "cơ bản/không full" thì bắt buộc ghi "cơ bản".
-       - "không nội thất": Khi nguồn ghi rõ "không nội thất", "không đồ", "nhà trống".
-       - "bàn giao thô": Khi nguồn ghi rõ "bàn giao thô", "nhà thô".
-       - "chưa rõ": Khi tin nhắn hoàn toàn KHÔNG NHẮC GÌ đến nội thất (tin này vẫn nhập bình thường, không dừng lại).
-     * "furniture_list": Trích xuất NGUYÊN MẪU danh sách các món đồ được liệt kê trong tin nhắn (ví dụ: "điều hòa, nóng lạnh, giường, tủ lạnh").
-       - Nguồn nói rõ không có món nào thì ghi rõ đúng chữ đó (ví dụ: "không có tủ lạnh", "chưa có giường").
+       - "đầy đủ nội thất": KHI VÀ CHỈ KHI nguồn ghi rõ: "full nội thất", "full đồ", "full option", "full gỗ", "đầy đủ nội thất", "đủ đồ".
+       - "cơ bản": KHI VÀ CHỈ KHI nguồn ghi rõ: "nội thất cơ bản", "đồ cơ bản", "không full", "bán hoàn thiện". TUYỆT ĐỐI KHÔNG DỰA VÀO SỐ LƯỢNG ĐỒ ĐƯỢC LIỆT KÊ ĐỂ TỰ ĐỔI TỪ CƠ BẢN THÀNH FULL! Dù liệt kê bao nhiêu món đồ đi nữa, hễ có chữ "cơ bản/không full" thì bắt buộc ghi "cơ bản".
+       - "không nội thất": KHI VÀ CHỈ KHI nguồn ghi rõ: "không nội thất", "không đồ", "nhà trống".
+       - "bàn giao thô": KHI VÀ CHỈ KHI nguồn ghi rõ: "bàn giao thô", "nhà thô".
+       - "chưa rõ": BẮT BUỘC CHỌN "chưa rõ" TRONG CẢ 2 TRƯỜNG HỢP SAU:
+         (a) Tin nhắn hoàn toàn KHÔNG NHẮC GÌ đến nội thất (ví dụ: tin chỉ có diện tích, số tầng, giá như Trần Vỹ -> furniture_status BẮT BUỘC LÀ "chưa rõ", TUYỆT ĐỐI KHÔNG ĐƯỢC TỰ SUY ĐOÁN LÀ "cơ bản"!).
+         (b) Tin nhắn CHỈ LIỆT KÊ TÊN THIẾT BỊ / MÓN ĐỒ mà KHÔNG CÓ từ khẳng định "full" hay "cơ bản" (ví dụ: chỉ ghi "Dh, nl, giường, bếp" hoặc "Dh âm trần, nl, THANG MÁY" hoặc "có bếp rèm" -> furniture_status BẮT BUỘC LÀ "chưa rõ", TUYỆT ĐỐI KHÔNG ĐƯỢC TỰ KẾT LUẬN LÀ "đầy đủ nội thất"!).
+     * "furniture_list": Trích xuất NGUYÊN MẪU danh sách các món đồ được liệt kê trong tin nhắn (ví dụ: "Dh, nl, giường, bếp", "Dh âm trần, nl, THANG MÁY", "có bếp rèm", "6 điều hoà, 6 nóng lạnh, tủ bếp").
+       - Nguồn nói rõ không có món nào thì ghi rõ đúng chữ đó (ví dụ: "riêng tủ lạnh chưa có", "chưa có giường").
        - Không nhắc đến không có nghĩa là không có (tuyệt đối không tự suy đoán thêm món nào).
        - Nếu tin nhắn không liệt kê món đồ nào thì để null hoặc "".
 
@@ -201,6 +203,8 @@ ${rawText}`;
         model: modelId,
         contents,
         config: {
+          temperature: 0.0,
+          topP: 0.1,
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -326,21 +330,20 @@ ${rawText}`;
  * Ngăn chặn tuyệt đối tình trạng Gemini bỏ sót giá, bỏ sót diện tích hoặc quên điều kiện cấm.
  */
 function postProcessListing(prop: ExtractedProperty, fullText: string): ExtractedProperty {
-  const text = `${prop.source_text_snippet || ""} ${fullText} ${prop.key_details?.vi || ""}`;
+  const text = `${prop.source_text_snippet || ""} ${fullText || ""}`;
 
-  // 1. Chuẩn hóa furniture_status & handover_condition theo đúng 3 quy tắc
+  // 1. Chuẩn hóa furniture_status & handover_condition theo đúng nguyên tắc Strict Fidelity
+  // Chỉ nhận diện theo từ khóa khẳng định rõ ràng trong chính đoạn văn bản của căn này
   if (/nội\s*thất\s*cơ\s*bản|đồ\s*cơ\s*bản|không\s*full/i.test(text)) {
-    // Quy tắc 1: Có "cơ bản / không full" thì tuyệt đối là "cơ bản", không cho đổi thành full
     prop.furniture_status = "cơ bản";
-  } else if (/full\s*(?:nội\s*thất|đồ|option)|đầy\s*đủ\s*(?:nội\s*thất|đồ)/i.test(text)) {
+  } else if (/full\s*(?:nội\s*thất|đồ|option|gỗ)|đầy\s*đủ\s*(?:nội\s*thất|đồ)|đủ\s*đồ/i.test(text)) {
     prop.furniture_status = "đầy đủ nội thất";
   } else if (/không\s*nội\s*thất|không\s*đồ|nhà\s*trống/i.test(text)) {
-    // Quy tắc 3: Ghi rõ không có nội thất -> "không nội thất"
     prop.furniture_status = "không nội thất";
   } else if (/bàn\s*giao\s*thô|nhà\s*thô/i.test(text)) {
     prop.furniture_status = "bàn giao thô";
-  } else if (!prop.furniture_status || prop.furniture_status === "unknown" || prop.furniture_status === "chưa rõ") {
-    // Quy tắc 3: Không nói gì -> "chưa rõ"
+  } else {
+    // Nếu tin nhắn chỉ liệt kê món đồ cụ thể (ví dụ "Dh, nl, giường, bếp") hoặc không nhắc gì -> bắt buộc "chưa rõ"
     prop.furniture_status = "chưa rõ";
   }
 
