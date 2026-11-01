@@ -1,7 +1,7 @@
 import "server-only";
 import { Type } from "@google/genai";
 import { executeWithKeyRotation } from "./key-manager";
-import { getGoldenSamplesForPrompt, verifyVerbatimSpan } from "./golden-samples";
+import { getGoldenSamplesForPrompt, verifyVerbatimSpan, detectPricePeriod } from "./golden-samples";
 
 export interface ExtractedProperty {
   source_text_snippet: string | null;
@@ -16,7 +16,7 @@ export interface ExtractedProperty {
   total_lease_area_m2: number | null;
   price_amount: number | null;
   price_currency: string;
-  price_period: string;
+  price_period: string | null;
   price_basis: string;
   price_text: string | null;
   lease_term_text?: string | null;
@@ -79,17 +79,19 @@ QUY TẮC CỐT LÕI:
    - QUY TẮC CẤM SUY ĐOÁN BỪA: Nếu tin nhắn hoàn toàn không có bất kỳ dữ kiện địa danh nào xác định được tỉnh/thành phố, trả về province: null. TUYỆT ĐỐI KHÔNG tự ý gán bừa là "TP. Hồ Chí Minh" hay bất kỳ tỉnh nào.
 
 3. QUY ĐỔI GIÁ TIỀN & ĐƠN VỊ (QUÉT XUYÊN SUỐT HỘI THOẠI):
-   - "80 ạ", "80 tr", "80 triệu" -> price_amount: 80000000, price_currency: "VND", price_basis: "Tổng căn", price_period: "Theo tháng"
-   - "50 triệu/tháng", "50tr", "chủ chốt 50tr", "thuê 50 củ" -> price_amount: 50000000, price_currency: "VND", price_basis: "Tổng căn", price_period: "Theo tháng"
-   - "16,5 triệu", "16.5tr" -> price_amount: 16500000, price_currency: "VND", price_basis: "Tổng căn", price_period: "Theo tháng"
-   - "18 triệu/tháng", "18tr" -> price_amount: 18000000, price_currency: "VND", price_basis: "Tổng căn", price_period: "Theo tháng"
-   - "200 tr/ tháng", "200 triệu" -> price_amount: 200000000, price_currency: "VND", price_basis: "Tổng căn", price_period: "Theo tháng"
-   - "39 triệu" -> price_amount: 39000000, price_currency: "VND", price_basis: "Tổng căn", price_period: "Theo tháng"
-   - "2000$", "2000 usd" -> price_amount: 2000, price_currency: "USD", price_basis: "Tổng căn", price_period: "Theo tháng"
+   - "80 ạ", "80 tr", "80 triệu" -> price_amount: 80000000, price_currency: "VND", price_basis: "Tổng căn", price_period: null (không có chữ /tháng)
+   - "50 triệu/tháng" -> price_amount: 50000000, price_currency: "VND", price_basis: "Tổng căn", price_period: "Theo tháng" (vì có rõ chữ /tháng)
+   - "50tr", "chủ chốt 50tr", "thuê 50 củ" -> price_amount: 50000000, price_currency: "VND", price_basis: "Tổng căn", price_period: null (không có chữ /tháng)
+   - "16,5 triệu", "16.5tr" -> price_amount: 16500000, price_currency: "VND", price_basis: "Tổng căn", price_period: null
+   - "18 triệu/tháng" -> price_amount: 18000000, price_currency: "VND", price_basis: "Tổng căn", price_period: "Theo tháng" (vì có rõ chữ /tháng)
+   - "200 tr/ tháng" -> price_amount: 200000000, price_currency: "VND", price_basis: "Tổng căn", price_period: "Theo tháng" (vì có rõ chữ / tháng)
+   - "39 triệu", "55tr" -> price_amount: 55000000, price_currency: "VND", price_basis: "Tổng căn", price_period: null (không có chữ /tháng)
+   - "2000$", "2000 usd" -> price_amount: 2000, price_currency: "USD", price_basis: "Tổng căn", price_period: null
    - "12 tỷ 5", "12.5 tỷ" -> price_amount: 12500000000, price_currency: "VND", price_basis: "Tổng căn", price_period: "Một lần"
-   - "85000đ/m2", "85k/m2" -> price_amount: 85000, price_currency: "VND", price_basis: "Theo m²", price_period: "Theo tháng"
-   - "4.5 USD/m2", "5$/m2" -> price_amount: 4.5, price_currency: "USD", price_basis: "Theo m²", price_period: "Theo tháng"
-   - Luôn sao chép NGUYÊN VĂN chuỗi giá vào "price_text" (ví dụ: "85k/m2", "50 triệu/tháng", "2000$", "200 tr/ tháng", "18 triệu/tháng").
+   - "85000đ/m2/tháng" -> price_amount: 85000, price_currency: "VND", price_basis: "Theo m²", price_period: "Theo tháng"
+   - "85000đ/m2", "85k/m2" -> price_amount: 85000, price_currency: "VND", price_basis: "Theo m²", price_period: null
+   - KỲ HẠN GIÁ (price_period): CHỈ ĐIỀN "Theo tháng" hoặc "Theo năm" KHI TIN NHẮN CÓ CHỮ RÕ RÀNG (như "/tháng", "tr/tháng", "triệu/tháng", "theo tháng", "1 tháng", "/năm", "theo năm"). NẾU KHÔNG CÓ THÌ BẮT BUỘC ĐỂ NULL, TUYỆT ĐỐI KHÔNG TỰ DỊCH NGHĨA SANG "Theo tháng"!
+   - Luôn sao chép NGUYÊN VĂN chuỗi giá vào "price_text" (ví dụ: "85k/m2", "50 triệu/tháng", "2000$", "200 tr/ tháng", "55tr").
    - QUÉT TOÀN BỘ CHUỖI TIN NHẮN: Quét kỹ các tin nhắn trao đổi tiếp nối để tìm giá tiền, TUYỆT ĐỐI KHÔNG để price_amount: null nếu trong văn bản có bất kỳ mức giá nào được nhắc đến.
    - PHÂN BIỆT CƠ SỞ TÍNH GIÁ (price_basis):
      * Nhà ở, căn hộ, biệt thự, nhà phố: điền price_basis: "Tổng căn".
@@ -234,7 +236,11 @@ ${rawText}`;
                     total_lease_area_m2: { type: Type.NUMBER, nullable: true },
                     price_amount: { type: Type.NUMBER, nullable: true },
                     price_currency: { type: Type.STRING },
-                    price_period: { type: Type.STRING },
+                    price_period: {
+                      type: Type.STRING,
+                      nullable: true,
+                      description: "Chỉ ghi 'Theo tháng', 'Theo năm', hoặc 'Một lần' nếu tin nhắn có từ ngữ nêu rõ kỳ hạn. Nếu không có chữ theo tháng/năm thì bắt buộc để null.",
+                    },
                     price_basis: { type: Type.STRING },
                     price_text: { type: Type.STRING, nullable: true },
                     lease_term_text: { type: Type.STRING, nullable: true },
@@ -289,7 +295,6 @@ ${rawText}`;
                     "address_text",
                     "property_types",
                     "price_currency",
-                    "price_period",
                     "price_basis",
                     "key_details",
                   ],
@@ -347,7 +352,6 @@ function postProcessListing(prop: ExtractedProperty, fullText: string): Extracte
       if (unit.startsWith("tr") || unit === "củ") {
         prop.price_amount = Math.round(num * 1000000);
         prop.price_currency = "VND";
-        prop.price_period = prop.price_period || "month";
         prop.price_basis = prop.price_basis || "total";
         if (!prop.price_text) prop.price_text = `${priceMatch[1]} triệu`;
       } else if (unit === "tỷ") {
@@ -401,12 +405,13 @@ function postProcessListing(prop: ExtractedProperty, fullText: string): Extracte
     prop.price_basis = "Tổng căn";
   }
 
-  if (prop.price_period === "year" || String(prop.price_period).toLowerCase().includes("năm")) {
-    prop.price_period = "Theo năm";
-  } else if (prop.price_period === "one_time" || String(prop.price_period).toLowerCase().includes("lần") || String(prop.price_period).toLowerCase().includes("bán")) {
-    prop.price_period = "Một lần";
+  // Xác thực kỳ hạn giá: chỉ gán khi tin nhắn thực sự có từ ngữ chỉ kỳ hạn
+  const detectedPeriod = detectPricePeriod(prop.price_text, prop.source_text_snippet || text);
+  if (detectedPeriod) {
+    prop.price_period = detectedPeriod;
   } else {
-    prop.price_period = "Theo tháng";
+    // Tin nhắn KHÔNG CÓ chữ tháng/năm/bán -> Tuyệt đối không tự suy diễn hay dịch nghĩa theo tháng!
+    prop.price_period = null;
   }
 
   // 7. Chuẩn hóa tiếng Việt cho Loại hình BĐS

@@ -66,9 +66,9 @@ export function formatPrice(
   }
 
   const periodNormalized = pricePeriod === "monthly" ? "month" : pricePeriod;
-  if (periodNormalized === "month") {
+  if (periodNormalized === "month" || periodNormalized === "Theo tháng") {
     suffix += locale === "zh" ? "/月" : locale === "en" ? "/month" : "/tháng";
-  } else if (periodNormalized === "year") {
+  } else if (periodNormalized === "year" || periodNormalized === "Theo năm") {
     suffix += locale === "zh" ? "/年" : locale === "en" ? "/year" : "/năm";
   }
 

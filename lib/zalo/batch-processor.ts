@@ -148,7 +148,7 @@ export async function processBatchSubmission(
           total_lease_area_m2: prop.total_lease_area_m2 || null,
           price_amount: prop.price_amount || null,
           price_currency: prop.price_currency || "VND",
-          price_period: prop.price_period || "month",
+          price_period: prop.price_period || null,
           price_basis: prop.price_basis || "total",
           price_text: prop.price_text || null,
           key_details: {

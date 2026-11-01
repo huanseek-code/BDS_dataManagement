@@ -2,7 +2,7 @@ import "server-only";
 import { Type } from "@google/genai";
 import { executeWithKeyRotation } from "./key-manager";
 import { ExtractedProperty } from "./extract";
-import { getGoldenSamplesForPrompt, verifyVerbatimSpan } from "./golden-samples";
+import { getGoldenSamplesForPrompt, verifyVerbatimSpan, detectPricePeriod } from "./golden-samples";
 
 export interface BatchTimelineItem {
   msg_id: string;
@@ -85,8 +85,12 @@ NGUYÊN TẮC CỐT LÕI - BÓC TÁCH NGUYÊN GỐC CHỮ TRONG TIN NHẮN (STRI
    - "price_amount": Con số quy đổi đầy đủ (ví dụ: "60 triệu/tháng" -> 60000000, "12 tr" -> 12000000, "85 triệu" -> 85000000; "2000$" -> 2000). Luôn tính đúng đơn vị triệu, tuyệt đối không để số 12 hay 85.
    - "price_currency": "VND" hoặc "USD".
    - "price_basis": Điền chữ tiếng Việt nguyên bản: "Tổng căn" hoặc "Theo m²".
-   - "price_period": Điền chữ tiếng Việt nguyên bản: "Theo tháng", "Theo năm", hoặc "Một lần".
-   - "price_text": Sao chép NGUYÊN VĂN câu giá từ tin nhắn (ví dụ: "60 triệu/tháng (có TL)", "14 tr mpdv", "85 triệu/tháng").
+   - "price_period": KỲ HẠN GIÁ (QUY TẮC BẢO TOÀN NGUYÊN BẢN - ZERO EXTRAPOLATION):
+     * "Theo tháng": CHỈ ĐIỀN khi tin nhắn có chữ rõ ràng chỉ kỳ hạn theo tháng (ví dụ: "/tháng", "triệu/tháng", "tr/tháng", "tr/th", "/th", "theo tháng", "1 tháng", "hàng tháng").
+     * "Theo năm": CHỈ ĐIỀN khi tin nhắn có chữ rõ ràng chỉ kỳ hạn theo năm (ví dụ: "/năm", "triệu/năm", "theo năm", "1 năm").
+     * "Một lần": CHỈ ĐIỀN khi tin nhắn thể hiện giao dịch bán, mua đứt, chuyển nhượng 1 lần.
+     * NẾU TIN NHẮN KHÔNG NÊU RÕ KỲ HẠN (ví dụ: chỉ ghi "Giá thuê : 55tr", "giá 8,5tr", "12 triệu", "50tr", "39 triệu"): BẮT BUỘC ĐỂ NULL, TUYỆT ĐỐI KHÔNG TỰ SUY DIỄN HAY TỰ DỊCH NGHĨA THÀNH "Theo tháng"!
+   - "price_text": Sao chép NGUYÊN VĂN câu giá từ tin nhắn (ví dụ: "60 triệu/tháng (có TL)", "14 tr mpdv", "85 triệu/tháng", "55tr").
 
 6. HOA HỒNG & ĐIỀU KIỆN HỢP ĐỒNG (GIỮ NGUYÊN VĂN):
    - "landlord_commission_text": Sao chép NGUYÊN VĂN câu chữ hoa hồng của chủ nhà (ví dụ: "1 tháng bên mình 50%", "hh full", "1 tháng tiền nhà").
@@ -152,7 +156,11 @@ ${goldenSamplesText}
                     total_lease_area_m2: { type: Type.NUMBER, nullable: true },
                     price_amount: { type: Type.NUMBER, nullable: true },
                     price_currency: { type: Type.STRING },
-                    price_period: { type: Type.STRING },
+                    price_period: {
+                      type: Type.STRING,
+                      nullable: true,
+                      description: "Chỉ ghi 'Theo tháng', 'Theo năm', hoặc 'Một lần' nếu tin nhắn có từ ngữ nêu rõ kỳ hạn. Nếu không có chữ theo tháng/năm thì bắt buộc để null.",
+                    },
                     price_basis: { type: Type.STRING },
                     price_text: { type: Type.STRING, nullable: true },
                     lease_term_text: { type: Type.STRING, nullable: true },
@@ -187,7 +195,6 @@ ${goldenSamplesText}
                     "address_text",
                     "property_types",
                     "price_currency",
-                    "price_period",
                     "price_basis",
                     "key_details",
                   ],
@@ -249,9 +256,8 @@ function postProcessBatchListing(prop: any, snippetText: string): ExtractedPrope
       if (unit.startsWith("tr") || unit === "củ") {
         prop.price_amount = Math.round(num * 1000000);
         prop.price_currency = "VND";
-        prop.price_period = prop.price_period || "month";
         prop.price_basis = prop.price_basis || "total";
-        if (!prop.price_text) prop.price_text = `${priceMatch[1]} triệu/tháng`;
+        if (!prop.price_text) prop.price_text = `${priceMatch[1]} triệu`;
       } else if (unit === "tỷ") {
         prop.price_amount = Math.round(num * 1000000000);
         prop.price_currency = "VND";
@@ -303,12 +309,13 @@ function postProcessBatchListing(prop: any, snippetText: string): ExtractedPrope
     prop.price_basis = "Tổng căn";
   }
 
-  if (prop.price_period === "year" || String(prop.price_period).toLowerCase().includes("năm")) {
-    prop.price_period = "Theo năm";
-  } else if (prop.price_period === "one_time" || String(prop.price_period).toLowerCase().includes("lần") || String(prop.price_period).toLowerCase().includes("bán")) {
-    prop.price_period = "Một lần";
+  // Xác thực kỳ hạn giá: chỉ gán khi tin nhắn thực sự có từ ngữ chỉ kỳ hạn
+  const detectedPeriod = detectPricePeriod(prop.price_text, prop.source_text_snippet || text);
+  if (detectedPeriod) {
+    prop.price_period = detectedPeriod;
   } else {
-    prop.price_period = "Theo tháng";
+    // Tin nhắn KHÔNG CÓ chữ tháng/năm/bán -> Tuyệt đối không tự suy diễn hay dịch nghĩa theo tháng!
+    prop.price_period = null;
   }
 
   // 7. Chuẩn hóa tiếng Việt cho Loại hình BĐS
