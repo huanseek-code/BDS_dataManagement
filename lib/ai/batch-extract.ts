@@ -2,6 +2,7 @@ import "server-only";
 import { Type } from "@google/genai";
 import { executeWithKeyRotation } from "./key-manager";
 import { ExtractedProperty } from "./extract";
+import { getGoldenSamplesForPrompt, verifyVerbatimSpan } from "./golden-samples";
 
 export interface BatchTimelineItem {
   msg_id: string;
@@ -50,11 +51,13 @@ export async function extractBatchPropertiesFromTimeline(
     transcript += `[Tin nhắn ${index + 1} | ${item.sent_time || "Vừa gửi"}] (ID: ${item.msg_id}):\n${(item.text || "").trim()}\n\n`;
   });
 
+  const goldenSamplesText = await getGoldenSamplesForPrompt();
+
   const systemPrompt = `
 Bạn là chuyên gia thẩm định và bóc tách dữ liệu Bất động sản (BĐS) hàng đầu cho Huanseek.
 Nhiệm vụ của bạn là đọc DÒNG THỜI GIAN CÁC TIN NHẮN VĂN BẢN từ đối tác môi giới, nhận diện chính xác có MỘT hay NHIỀU căn BĐS độc lập và trích xuất thành danh sách chuẩn hóa thuần text.
 
-NGUYÊN TẮC CỐT LÕI - BÓC TÁCH ĐẦY ĐỦ & GIỮ NGUYÊN BẢN TIN NHẮN (STRICT VERBATIM FIDELITY):
+NGUYÊN TẮC CỐT LÕI - BÓC TÁCH NGUYÊN GỐC CHỮ TRONG TIN NHẮN (STRICT VERBATIM FIDELITY):
 
 1. BÓC TÁCH TOÀN BỘ CÁC THÔNG SỐ CÓ THỰC TRONG TIN NHẮN:
    - Trích xuất đầy đủ và triệt để mọi thông tin có trong văn bản: địa chỉ, loại hình, diện tích sàn, tổng diện tích, số tầng, mặt tiền, kết cấu phòng/vệ sinh, đồ đạc nội thất, giá thuê/bán, điều kiện thanh toán/cọc, thời hạn hợp đồng, hoa hồng chủ nhà trả, hoa hồng bên mình nhận, công năng phù hợp, ngành nghề cấm/hạn chế, số điện thoại liên hệ...
@@ -70,18 +73,12 @@ NGUYÊN TẮC CỐT LÕI - BÓC TÁCH ĐẦY ĐỦ & GIỮ NGUYÊN BẢN TIN NH�
    - Trích xuất NGUYÊN MẪU cụm từ chỉ loại hình BĐS có trong tin nhắn dưới dạng tiếng Việt (ví dụ: ["Nhà liền kề"], ["Nhà mặt phố"], ["Căn hộ chung cư"], ["Biệt thự"], ["Kho xưởng"], ["Văn phòng"], ["Mặt bằng kinh doanh"]...).
    - TUYỆT ĐỐI KHÔNG DỊCH sang tiếng Anh (không dùng "townhouse", "apartment", "villa"...).
 
-4. NỘI THẤT & DANH SÁCH MÓN ĐỒ (STRICT FIDELITY - TUYỆT ĐỐI KHÔNG SUY DIỄN / KHÔNG TỰ BỊA):
-   - "furniture_status": Điền trực tiếp chữ tiếng Việt (Chỉ chọn 1 trong 5 giá trị):
-     * "đầy đủ nội thất": KHI VÀ CHỈ KHI nguồn ghi rõ: "full nội thất", "full đồ", "full option", "full gỗ", "đầy đủ nội thất", "đủ đồ".
-     * "cơ bản": KHI VÀ CHỈ KHI nguồn ghi rõ: "nội thất cơ bản", "đồ cơ bản", "không full", "bán hoàn thiện". TUYỆT ĐỐI KHÔNG DỰA VÀO SỐ LƯỢNG ĐỒ ĐƯỢC LIỆT KÊ ĐỂ TỰ ĐỔI TỪ CƠ BẢN THÀNH FULL! Dù liệt kê bao nhiêu món đồ đi nữa, hễ có chữ "cơ bản/không full" thì bắt buộc ghi "cơ bản".
-     * "không nội thất": KHI VÀ CHỈ KHI nguồn ghi rõ: "không nội thất", "không đồ", "nhà trống".
-     * "bàn giao thô": KHI VÀ CHỈ KHI nguồn ghi rõ: "bàn giao thô", "nhà thô".
-     * "chưa rõ": BẮT BUỘC CHỌN "chưa rõ" TRONG CẢ 2 TRƯỜNG HỢP SAU:
-       (a) Tin nhắn hoàn toàn KHÔNG NHẮC GÌ đến nội thất (ví dụ: tin chỉ có diện tích, số tầng, giá như Trần Vỹ -> furniture_status BẮT BUỘC LÀ "chưa rõ", TUYỆT ĐỐI KHÔNG ĐƯỢC TỰ SUY ĐOÁN LÀ "cơ bản"!).
-       (b) Tin nhắn CHỈ LIỆT KÊ TÊN THIẾT BỊ / MÓN ĐỒ mà KHÔNG CÓ từ khẳng định "full" hay "cơ bản" (ví dụ: chỉ ghi "Dh, nl, giường, bếp" hoặc "Dh âm trần, nl, THANG MÁY" hoặc "có bếp rèm" -> furniture_status BẮT BUỘC LÀ "chưa rõ", TUYỆT ĐỐI KHÔNG ĐƯỢC TỰ KẾT LUẬN LÀ "đầy đủ nội thất"!).
+4. NỘI THẤT & DANH SÁCH MÓN ĐỒ (VERBATIM SPAN EXTRACTION - TRÍCH NGUYÊN GỐC TỪNG CHỮ):
+   - "furniture_status": CẮT ĐÚNG TỪ/CỤM TỪ NGUYÊN GỐC trong tin nhắn thể hiện hiện trạng nội thất (ví dụ: "đủ đồ", "full đồ", "đồ cơ bản", "full gỗ", "nhà trống", "bàn giao thô", "nguyên bản cđt"...).
+     * TUYỆT ĐỐI KHÔNG TỰ QUY ĐỔI (ví dụ: tin ghi "đủ đồ" thì trích đúng "đủ đồ", CẤM đổi thành "đầy đủ nội thất").
+     * NẾU TIN KHÔNG CÓ CỤM TỪ NÀO CHỈ HIỆN TRẠNG (ví dụ: chỉ liệt kê món đồ "Dh, nl, giường, bếp" hoặc không nhắc gì): BẮT BUỘC ĐỂ NULL, TUYỆT ĐỐI KHÔNG TỰ ĐẶT TỪ "chưa rõ" VÀO ĐÂY!
    - "furniture_list": Trích xuất NGUYÊN MẪU danh sách các món đồ được liệt kê trong tin nhắn (ví dụ: "Dh, nl, giường, bếp", "Dh âm trần, nl, THANG MÁY", "có bếp rèm", "6 điều hoà, 6 nóng lạnh, tủ bếp").
      * Nguồn nói rõ không có món nào thì ghi rõ đúng câu chữ đó (ví dụ: "riêng tủ lạnh chưa có", "chưa có giường").
-     * Không nhắc đến không có nghĩa là không có (tuyệt đối không tự suy đoán thêm món nào).
      * Nếu tin nhắn không liệt kê món đồ nào thì để null hoặc "".
 
 5. GIÁ TIỀN & ĐƠN VỊ & CƠ SỞ TÍNH GIÁ (GIỮ NGUYÊN BẢN TIẾNG VIỆT):
@@ -108,6 +105,8 @@ NGUYÊN TẮC CỐT LÕI - BÓC TÁCH ĐẦY ĐỦ & GIỮ NGUYÊN BẢN TIN NH�
 8. TÓM TẮT 3 NGÔN NGỮ (key_details: vi, en, zh):
    - vi: Tóm tắt đầy đủ, súc tích, trung thực 100% dựa vào các thông số có thật của căn đó.
    - en & zh: Bản dịch tương ứng sát nghĩa và đầy đủ.
+
+${goldenSamplesText}
 `;
 
   try {
@@ -175,11 +174,13 @@ NGUYÊN TẮC CỐT LÕI - BÓC TÁCH ĐẦY ĐỦ & GIỮ NGUYÊN BẢN TIN NH�
                     },
                     furniture_status: {
                       type: Type.STRING,
-                      enum: ["đầy đủ nội thất", "cơ bản", "không nội thất", "bàn giao thô", "chưa rõ"],
+                      nullable: true,
+                      description: "Cắt nguyên văn từ/cụm từ mô tả hiện trạng có trong tin nhắn (ví dụ: 'đủ đồ', 'full đồ', 'đồ cơ bản', 'full gỗ', 'nhà trống'...). Nếu không có thì để null.",
                     },
                     furniture_list: {
                       type: Type.STRING,
                       nullable: true,
+                      description: "Danh sách món đồ liệt kê nguyên mẫu trong tin nhắn. Nếu không có thì để null.",
                     },
                   },
                   required: [
@@ -233,22 +234,11 @@ NGUYÊN TẮC CỐT LÕI - BÓC TÁCH ĐẦY ĐỦ & GIỮ NGUYÊN BẢN TIN NH�
 function postProcessBatchListing(prop: any, snippetText: string): ExtractedProperty {
   const text = `${prop.source_text_snippet || ""} ${snippetText || ""}`;
 
-  // 1. Chuẩn hóa furniture_status & handover_condition theo đúng nguyên tắc Strict Fidelity
-  // Chỉ nhận diện theo từ khóa khẳng định rõ ràng trong chính đoạn tin nhắn của căn này
-  if (/nội\s*thất\s*cơ\s*bản|đồ\s*cơ\s*bản|không\s*full/i.test(text)) {
-    prop.furniture_status = "cơ bản";
-  } else if (/full\s*(?:nội\s*thất|đồ|option|gỗ)|đầy\s*đủ\s*(?:nội\s*thất|đồ)|đủ\s*đồ/i.test(text)) {
-    prop.furniture_status = "đầy đủ nội thất";
-  } else if (/không\s*nội\s*thất|không\s*đồ|nhà\s*trống/i.test(text)) {
-    prop.furniture_status = "không nội thất";
-  } else if (/bàn\s*giao\s*thô|nhà\s*thô/i.test(text)) {
-    prop.furniture_status = "bàn giao thô";
-  } else {
-    // Nếu tin nhắn chỉ liệt kê món đồ cụ thể (ví dụ "Dh, nl, giường, bếp") hoặc không nhắc gì -> bắt buộc "chưa rõ"
-    prop.furniture_status = "chưa rõ";
-  }
-
-  prop.handover_condition = prop.furniture_status;
+  // 1. Chốt chặn xác thực chuỗi con nguyên bản (Zero-Hallucination Substring Verifier):
+  // Bất kỳ chữ nào không có trong tin nhắn gốc -> tự động loại bỏ về null
+  prop.furniture_status = verifyVerbatimSpan(prop.furniture_status, text);
+  prop.furniture_list = verifyVerbatimSpan(prop.furniture_list, text) || prop.furniture_list || null;
+  prop.handover_condition = prop.furniture_status || null;
 
   // 2. Fallback giá tiền nếu price_amount rỗng
   if (!prop.price_amount || prop.price_amount <= 0) {

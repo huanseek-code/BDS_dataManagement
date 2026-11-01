@@ -70,14 +70,10 @@ export function InboxView({
     setTimeout(() => setIsRefreshing(false), 800);
   };
 
-  function normalizeFurnitureStatus(val?: string | null): string {
-    if (!val) return "chưa rõ";
-    const s = String(val).toLowerCase().trim();
-    if (s.includes("cơ bản") || s.includes("không full") || s === "partially_furnished") return "cơ bản";
-    if (s.includes("full") || s.includes("đầy đủ") || s === "fully_furnished") return "đầy đủ nội thất";
-    if (s.includes("không nội thất") || s.includes("không đồ") || s.includes("nhà trống") || s === "basic_unfurnished") return "không nội thất";
-    if (s.includes("thô") || s === "bare_shell") return "bàn giao thô";
-    if (s === "chưa rõ" || s === "unknown") return "chưa rõ";
+  function getVerbatimFurnitureStatus(val?: string | null): string {
+    if (!val) return "";
+    const s = String(val).trim();
+    if (s.toLowerCase() === "null" || s.toLowerCase() === "undefined" || s.toLowerCase() === "chưa rõ") return "";
     return s;
   }
 
@@ -105,14 +101,14 @@ export function InboxView({
       price_text: listing.price_text || listing.ai_extracted?.price_text || "",
       landlord_commission_text: listing.landlord_commission_text || "",
       our_share_text: listing.our_share_text || "",
-      furniture_status: normalizeFurnitureStatus(
+      furniture_status: getVerbatimFurnitureStatus(
         listing.key_details?.furniture_status || listing.handover_condition || listing.ai_extracted?.furniture_status
       ),
       furniture_list:
         listing.key_details?.furniture_list ||
         listing.ai_extracted?.furniture_list ||
         "",
-      handover_condition: normalizeFurnitureStatus(
+      handover_condition: getVerbatimFurnitureStatus(
         listing.key_details?.furniture_status || listing.handover_condition || listing.ai_extracted?.furniture_status
       ),
       details_vi: listing.key_details?.vi || "",

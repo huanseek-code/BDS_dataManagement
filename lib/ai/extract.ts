@@ -1,6 +1,7 @@
 import "server-only";
 import { Type } from "@google/genai";
 import { executeWithKeyRotation } from "./key-manager";
+import { getGoldenSamplesForPrompt, verifyVerbatimSpan } from "./golden-samples";
 
 export interface ExtractedProperty {
   source_text_snippet: string | null;
@@ -108,18 +109,12 @@ QUY TẮC CỐT LÕI:
        -> RÀNG BUỘC HÌNH HỌC: Với nhà nhiều tầng, floor_area_m2 không bao giờ được lớn hơn total_lease_area_m2.
      * Giữ chính xác từng mét vuông số lẻ (ví dụ: 213m2 là 213, không được làm tròn thành 210 hay 215).
 
-   - NỘI THẤT & DANH SÁCH MÓN ĐỒ (STRICT FIDELITY - TUYỆT ĐỐI KHÔNG SUY DIỄN / KHÔNG TỰ BỊA):
-     * "furniture_status": Điền trực tiếp chữ tiếng Việt (Chỉ chọn 1 trong 5 giá trị):
-       - "đầy đủ nội thất": KHI VÀ CHỈ KHI nguồn ghi rõ: "full nội thất", "full đồ", "full option", "full gỗ", "đầy đủ nội thất", "đủ đồ".
-       - "cơ bản": KHI VÀ CHỈ KHI nguồn ghi rõ: "nội thất cơ bản", "đồ cơ bản", "không full", "bán hoàn thiện". TUYỆT ĐỐI KHÔNG DỰA VÀO SỐ LƯỢNG ĐỒ ĐƯỢC LIỆT KÊ ĐỂ TỰ ĐỔI TỪ CƠ BẢN THÀNH FULL! Dù liệt kê bao nhiêu món đồ đi nữa, hễ có chữ "cơ bản/không full" thì bắt buộc ghi "cơ bản".
-       - "không nội thất": KHI VÀ CHỈ KHI nguồn ghi rõ: "không nội thất", "không đồ", "nhà trống".
-       - "bàn giao thô": KHI VÀ CHỈ KHI nguồn ghi rõ: "bàn giao thô", "nhà thô".
-       - "chưa rõ": BẮT BUỘC CHỌN "chưa rõ" TRONG CẢ 2 TRƯỜNG HỢP SAU:
-         (a) Tin nhắn hoàn toàn KHÔNG NHẮC GÌ đến nội thất (ví dụ: tin chỉ có diện tích, số tầng, giá như Trần Vỹ -> furniture_status BẮT BUỘC LÀ "chưa rõ", TUYỆT ĐỐI KHÔNG ĐƯỢC TỰ SUY ĐOÁN LÀ "cơ bản"!).
-         (b) Tin nhắn CHỈ LIỆT KÊ TÊN THIẾT BỊ / MÓN ĐỒ mà KHÔNG CÓ từ khẳng định "full" hay "cơ bản" (ví dụ: chỉ ghi "Dh, nl, giường, bếp" hoặc "Dh âm trần, nl, THANG MÁY" hoặc "có bếp rèm" -> furniture_status BẮT BUỘC LÀ "chưa rõ", TUYỆT ĐỐI KHÔNG ĐƯỢC TỰ KẾT LUẬN LÀ "đầy đủ nội thất"!).
+   - NỘI THẤT & DANH SÁCH MÓN ĐỒ (VERBATIM SPAN EXTRACTION - TRÍCH NGUYÊN GỐC TỪNG CHỮ):
+     * "furniture_status": CẮT ĐÚNG TỪ/CỤM TỪ NGUYÊN GỐC trong tin nhắn thể hiện hiện trạng nội thất (ví dụ: "đủ đồ", "full đồ", "đồ cơ bản", "full gỗ", "nhà trống", "bàn giao thô", "nguyên bản cđt"...).
+       - TUYỆT ĐỐI KHÔNG TỰ QUY ĐỔI (ví dụ: tin ghi "đủ đồ" thì trích đúng "đủ đồ", CẤM đổi thành "đầy đủ nội thất").
+       - NẾU TIN KHÔNG CÓ CỤM TỪ NÀO CHỈ HIỆN TRẠNG (ví dụ: chỉ liệt kê món đồ "Dh, nl, giường, bếp" hoặc không nhắc gì): BẮT BUỘC ĐỂ NULL, TUYỆT ĐỐI KHÔNG TỰ ĐẶT TỪ "chưa rõ" VÀO ĐÂY!
      * "furniture_list": Trích xuất NGUYÊN MẪU danh sách các món đồ được liệt kê trong tin nhắn (ví dụ: "Dh, nl, giường, bếp", "Dh âm trần, nl, THANG MÁY", "có bếp rèm", "6 điều hoà, 6 nóng lạnh, tủ bếp").
-       - Nguồn nói rõ không có món nào thì ghi rõ đúng chữ đó (ví dụ: "riêng tủ lạnh chưa có", "chưa có giường").
-       - Không nhắc đến không có nghĩa là không có (tuyệt đối không tự suy đoán thêm món nào).
+       - Nguồn nói rõ không có món nào thì ghi rõ đúng câu chữ đó (ví dụ: "riêng tủ lạnh chưa có", "chưa có giường").
        - Nếu tin nhắn không liệt kê món đồ nào thì để null hoặc "".
 
    - QUY TẮC BẢO LƯU ĐIỀU KIỆN CẤM & NGÀNH NGHỀ HẠN CHẾ (NEGATIVE CONSTRAINTS):
@@ -174,15 +169,18 @@ ${
 `;
 
   try {
+    const goldenSamplesText = await getGoldenSamplesForPrompt();
+    const fullSystemPrompt = `${systemPrompt}\n\n${goldenSamplesText}`;
+
     const promptUserText = hasContext
-      ? `${systemPrompt}
+      ? `${fullSystemPrompt}
 
 --- HỒ SƠ BĐS ĐANG CHỜ DUYỆT TRƯỚC ĐÓ CỦA ĐỐI TÁC NÀY ---
 ${existingContext}
 
 --- TIN NHẮN MỚI VỪA GỬI ---
 ${rawText}`
-      : `${systemPrompt}
+      : `${fullSystemPrompt}
 
 --- NỘI DUNG TIN NHẮN TỪ ĐỐI TÁC ---
 ${rawText}`;
@@ -258,11 +256,13 @@ ${rawText}`;
                     },
                     furniture_status: {
                       type: Type.STRING,
-                      enum: ["đầy đủ nội thất", "cơ bản", "không nội thất", "bàn giao thô", "chưa rõ"],
+                      nullable: true,
+                      description: "Cắt nguyên văn từ/cụm từ mô tả hiện trạng có trong tin nhắn (ví dụ: 'đủ đồ', 'full đồ', 'đồ cơ bản', 'full gỗ', 'nhà trống'...). Nếu không có thì để null.",
                     },
                     furniture_list: {
                       type: Type.STRING,
                       nullable: true,
+                      description: "Danh sách món đồ liệt kê nguyên mẫu trong tin nhắn. Nếu không có thì để null.",
                     },
                     rental_options: {
                       type: Type.ARRAY,
@@ -332,22 +332,11 @@ ${rawText}`;
 function postProcessListing(prop: ExtractedProperty, fullText: string): ExtractedProperty {
   const text = `${prop.source_text_snippet || ""} ${fullText || ""}`;
 
-  // 1. Chuẩn hóa furniture_status & handover_condition theo đúng nguyên tắc Strict Fidelity
-  // Chỉ nhận diện theo từ khóa khẳng định rõ ràng trong chính đoạn văn bản của căn này
-  if (/nội\s*thất\s*cơ\s*bản|đồ\s*cơ\s*bản|không\s*full/i.test(text)) {
-    prop.furniture_status = "cơ bản";
-  } else if (/full\s*(?:nội\s*thất|đồ|option|gỗ)|đầy\s*đủ\s*(?:nội\s*thất|đồ)|đủ\s*đồ/i.test(text)) {
-    prop.furniture_status = "đầy đủ nội thất";
-  } else if (/không\s*nội\s*thất|không\s*đồ|nhà\s*trống/i.test(text)) {
-    prop.furniture_status = "không nội thất";
-  } else if (/bàn\s*giao\s*thô|nhà\s*thô/i.test(text)) {
-    prop.furniture_status = "bàn giao thô";
-  } else {
-    // Nếu tin nhắn chỉ liệt kê món đồ cụ thể (ví dụ "Dh, nl, giường, bếp") hoặc không nhắc gì -> bắt buộc "chưa rõ"
-    prop.furniture_status = "chưa rõ";
-  }
-
-  prop.handover_condition = prop.furniture_status;
+  // 1. Chốt chặn xác thực chuỗi con nguyên bản (Zero-Hallucination Substring Verifier):
+  // Bất kỳ chữ nào không có trong tin nhắn gốc -> tự động loại bỏ về null
+  prop.furniture_status = verifyVerbatimSpan(prop.furniture_status, text);
+  prop.furniture_list = verifyVerbatimSpan(prop.furniture_list, text) || prop.furniture_list || null;
+  prop.handover_condition = prop.furniture_status || null;
 
   // 2. Fallback giá tiền nếu price_amount bị null/0 mà trong văn bản có giá
   if (!prop.price_amount || prop.price_amount <= 0) {

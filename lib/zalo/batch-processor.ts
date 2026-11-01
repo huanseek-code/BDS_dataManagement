@@ -154,9 +154,9 @@ export async function processBatchSubmission(
           key_details: {
             ...((prop.key_details || {}) as any),
             lease_term_text: prop.lease_term_text || null,
-            furniture_status: prop.furniture_status || prop.handover_condition || "chưa rõ",
+            furniture_status: prop.furniture_status || null,
             furniture_list: prop.furniture_list || null,
-            handover_condition: prop.furniture_status || prop.handover_condition || "chưa rõ",
+            handover_condition: prop.furniture_status || null,
           },
           landlord_commission_text: prop.landlord_commission_text || null,
           our_share_percent: prop.our_share_percent || null,
