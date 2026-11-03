@@ -112,8 +112,8 @@ export function InboxView({
       const b = otherAddr.toLowerCase().replace(/^(nhà|căn hộ|chung cư|kho xưởng|cho thuê|bán)\s+/i, "").trim();
       if (!a || !b) return false;
       if (a.includes(b) || b.includes(a)) return true;
-      const wordsA = a.split(/[\s,.-]+/).filter((w) => w.length > 2);
-      const matchCount = wordsA.filter((w) => b.includes(w)).length;
+      const wordsA = a.split(/[\s,.-]+/).filter((w: string) => w.length > 2);
+      const matchCount = wordsA.filter((w: string) => b.includes(w)).length;
       return wordsA.length >= 2 && matchCount >= Math.min(2, wordsA.length);
     };
 
