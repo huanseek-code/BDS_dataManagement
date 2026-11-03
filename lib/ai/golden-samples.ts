@@ -200,6 +200,161 @@ export const STATIC_GOLDEN_SAMPLES: GoldenSample[] = [
         zh: "S203栋2房+1全木质家具租金1100万，11月15日入住。"
       }
     }
+  },
+  {
+    pattern_type: "warehouse_per_m2_no_floor_area",
+    description: "Kho xưởng chỉ có tổng diện tích (1800m), KHÔNG đề cập số tầng/mỗi tầng -> floor_area_m2: null. Giá '150K / m2' -> price_basis: 'per_m2'. Không có nội thất, hoa hồng, cọc -> tất cả để null.",
+    raw_message: "Cho thuê KHO XƯỞNG TIÊU CHUẨN ĐẠI TỪ- GIẢI PHÓNG tổng MB kho DT 1800m có cắt nhỏ : 800m,- đến 1000m\nđường xe công ra vào đỗ cửa kho thoải mái\nKho cao : 8-9m , có 2 cửa kho rộng phù hợp xuất, nhập hàng. PHÁP LÝ CHUẨN\nXuất VAT đầy đủ, có pccc đầy đủ, điện 3 pha, nước sạch\nGIÁ thuê:150K / m2 xuất VAT đầy đủ\n6 cọc 1 hoặc 3 cọc 1, hợp đồng 3 năm trở lên",
+    expected_extraction: {
+      reasoning: "Kho xưởng tổng diện tích 1800m2, không hề nói diện tích từng tầng hay số tầng -> total_lease_area_m2: 1800, floor_area_m2: null. Giá thuê ghi rõ '150K / m2' -> price_amount: 150000, price_currency: 'VND', price_basis: 'per_m2'. Không có thông tin nội thất, hoa hồng môi giới -> các trường này BẮT BUỘC để null.",
+      price_evidence: "150K / m2",
+      floor_area_evidence: null,
+      furniture_evidence: null,
+      address_text: "Đại Từ - Giải Phóng",
+      property_types: ["Kho xưởng"],
+      floor_area_m2: null,
+      total_lease_area_m2: 1800,
+      price_amount: 150000,
+      price_text: "150K / m2",
+      price_currency: "VND",
+      price_basis: "per_m2",
+      price_period: null,
+      lease_term_text: "6 cọc 1 hoặc 3 cọc 1, hợp đồng 3 năm trở lên",
+      furniture_status: null,
+      furniture_list: null,
+      landlord_commission_text: null,
+      our_share_percent: null,
+      our_share_text: null,
+      key_details: {
+        vi: "Kho xưởng tiêu chuẩn Đại Từ - Giải Phóng, tổng diện tích 1800m2 có cắt nhỏ 800m - 1000m, kho cao 8-9m, điện 3 pha, PCCC, giá thuê 150K/m2.",
+        en: "Standard warehouse Dai Tu - Giai Phong, total area 1800m2 split 800-1000m, height 8-9m, 3-phase power, fire safety, rent 150K VND/m2.",
+        zh: "大慈-解放标准仓库，总面积1800平米可分割800-1000平米，高8-9米，三相电，消防合规，租金150K/平米。"
+      }
+    }
+  },
+  {
+    pattern_type: "minimal_apartment_missing_fields",
+    description: "Tin nhắn cực ngắn chỉ có địa chỉ, diện tích và giá -> Toàn bộ trường thiếu (quận, phường, tầng, nội thất, hoa hồng, cọc, kỳ hạn) BẮT BUỘC ĐỂ NULL.",
+    raw_message: "Cho thuê căn hộ ngõ 104 Đào Tấn, dt 60m, giá 12tr",
+    expected_extraction: {
+      reasoning: "Căn hộ diện tích 60m không chia tầng -> total_lease_area_m2: 60, floor_area_m2: null. Giá 12tr không có chữ theo tháng hay năm -> price_amount: 12000000, price_currency: 'VND', price_basis: 'total', price_period: null. Các trường quận, phường, nội thất, hoa hồng, hợp đồng không được nhắc tới -> BẮT BUỘC ĐỂ NULL.",
+      price_evidence: "12tr",
+      floor_area_evidence: null,
+      furniture_evidence: null,
+      address_text: "ngõ 104 Đào Tấn",
+      property_types: ["Căn hộ"],
+      floor_area_m2: null,
+      total_lease_area_m2: 60,
+      price_amount: 12000000,
+      price_text: "12tr",
+      price_currency: "VND",
+      price_basis: "total",
+      price_period: null,
+      lease_term_text: null,
+      furniture_status: null,
+      furniture_list: null,
+      landlord_commission_text: null,
+      our_share_percent: null,
+      our_share_text: null,
+      key_details: {
+        vi: "Căn hộ ngõ 104 Đào Tấn, diện tích 60m2, giá 12tr.",
+        en: "Apartment alley 104 Dao Tan, 60m2, price 12m VND.",
+        zh: "桃晋104弄公寓，面积60平米，租金1200万。"
+      }
+    }
+  },
+  {
+    pattern_type: "townhouse_multi_floor_with_commission",
+    description: "Nhà phố có số tầng rõ ràng (60m2 x 5 tầng) -> floor_area_m2: '60', total_lease_area_m2: 300. Có hoa hồng và cọc rõ ràng.",
+    raw_message: "Cho thuê nhà mặt phố Nguyễn Khang, Cầu Giấy. Diện tích 60m2 x 5 tầng, mặt tiền 5m. Giá 35tr/tháng. Đóng 3 cọc 1, hợp đồng 3 năm. Hoa hồng 1 tháng bên mình 50%.",
+    expected_extraction: {
+      reasoning: "Nhà 5 tầng nói rõ 60m2 x 5 tầng -> diện tích mỗi tầng floor_area_m2: '60', tổng diện tích total_lease_area_m2: 300 (60 x 5). Giá 35tr/tháng trọn căn -> price_basis: 'total', price_period: 'Theo tháng'. Hoa hồng '1 tháng bên mình 50%' -> landlord_commission_text: '1 tháng bên mình 50%', our_share_percent: 50. Không có thông tin nội thất đồ đạc -> furniture_status: null, furniture_list: null.",
+      price_evidence: "35tr/tháng",
+      floor_area_evidence: "60m2 x 5 tầng",
+      furniture_evidence: null,
+      address_text: "Mặt phố Nguyễn Khang, Cầu Giấy",
+      property_types: ["Nhà mặt phố"],
+      floor_area_m2: "60",
+      total_lease_area_m2: 300,
+      price_amount: 35000000,
+      price_text: "35tr/tháng",
+      price_currency: "VND",
+      price_basis: "total",
+      price_period: "Theo tháng",
+      lease_term_text: "Đóng 3 cọc 1, hợp đồng 3 năm",
+      furniture_status: null,
+      furniture_list: null,
+      landlord_commission_text: "1 tháng bên mình 50%",
+      our_share_percent: 50,
+      our_share_text: "bên mình 50%",
+      key_details: {
+        vi: "Nhà mặt phố Nguyễn Khang, Cầu Giấy, DT 60m2 x 5 tầng, tổng 300m2, mặt tiền 5m, giá 35tr/tháng. HĐ 3 năm, cọc 1 đóng 3. Hoa hồng 1 tháng bên mình 50%.",
+        en: "Frontage Nguyen Khang, Cau Giay, 60m2 x 5 floors, total 300m2, 5m frontage, 35m VND/month. 3-yr lease, deposit 1 pay 3. Commission 1 month 50%.",
+        zh: "阮康临街房，纸桥郡，60平米x5层，总300平米，门宽5米，租金3500万/月。合同3年，押1付3。佣金1个月我方50%。"
+      }
+    }
+  },
+  {
+    pattern_type: "retail_with_negative_constraints",
+    description: "Mặt bằng kinh doanh 1 tầng không chia sàn -> floor_area_m2: null. Có điều kiện cấm (không làm hàng ăn, cafe) -> bảo tồn nguyên vẹn.",
+    raw_message: "Mặt bằng kinh doanh tầng 1 phố Huế, DT 80m thông sàn. Giá thuê 45tr/tháng. Cọc 2 thanh toán 3. CẤM KINH DOANH ĂN UỐNG, không làm hàng ăn cafe. Phù hợp thời trang, mỹ phẩm, văn phòng.",
+    expected_extraction: {
+      reasoning: "Mặt bằng tầng 1 thông sàn 80m -> total_lease_area_m2: 80, floor_area_m2: null (không có nhiều tầng). Giá 45tr/tháng -> price_basis: 'total', price_period: 'Theo tháng'. Có điều kiện cấm rõ: cấm ăn uống, không làm hàng ăn cafe -> đưa vào key_details ở cả 3 thứ tiếng. Không có nội thất đồ đạc -> furniture_status: null, furniture_list: null.",
+      price_evidence: "45tr/tháng",
+      floor_area_evidence: null,
+      furniture_evidence: null,
+      address_text: "Mặt bằng kinh doanh tầng 1 phố Huế",
+      property_types: ["Mặt bằng"],
+      floor_area_m2: null,
+      total_lease_area_m2: 80,
+      price_amount: 45000000,
+      price_text: "45tr/tháng",
+      price_currency: "VND",
+      price_basis: "total",
+      price_period: "Theo tháng",
+      lease_term_text: "Cọc 2 thanh toán 3",
+      furniture_status: null,
+      furniture_list: null,
+      landlord_commission_text: null,
+      our_share_percent: null,
+      our_share_text: null,
+      key_details: {
+        vi: "Mặt bằng tầng 1 phố Huế, DT 80m thông sàn, giá 45tr/tháng. Cọc 2 thanh toán 3. CẤM KINH DOANH ĂN UỐNG, không làm hàng ăn cafe.",
+        en: "Ground floor retail Hue street, 80m2 open space, 45m VND/month. Deposit 2 pay 3. NO F&B, no food or coffee.",
+        zh: "顺化街1层商铺，面积80平米通铺，租金4500万/月。押2付3。禁止餐饮业、咖啡馆。"
+      }
+    }
+  },
+  {
+    pattern_type: "office_per_m2_usd",
+    description: "Văn phòng báo giá bằng USD theo m2 (12$/m2/tháng) -> price_currency: 'USD', price_basis: 'per_m2', floor_area_m2: null.",
+    raw_message: "Tòa nhà văn phòng phố Duy Tân, Cầu Giấy. Trống sàn tầng 7 DT 250m2, giá 12$/m2/tháng. Bàn giao trần sàn điều hòa trung tâm. HĐ tối thiểu 2 năm.",
+    expected_extraction: {
+      reasoning: "Sàn văn phòng tầng 7 diện tích 250m2 -> total_lease_area_m2: 250, floor_area_m2: null. Giá 12$/m2/tháng -> đơn vị USD, tính theo mét vuông -> price_amount: 12, price_currency: 'USD', price_basis: 'per_m2', price_period: 'Theo tháng'. Bàn giao trần sàn điều hòa -> furniture_list: 'trần sàn điều hòa trung tâm', furniture_status: null. Không có hoa hồng -> để null.",
+      price_evidence: "12$/m2/tháng",
+      floor_area_evidence: null,
+      furniture_evidence: "trần sàn điều hòa trung tâm",
+      address_text: "Tòa nhà văn phòng phố Duy Tân, Cầu Giấy",
+      property_types: ["Văn phòng"],
+      floor_area_m2: null,
+      total_lease_area_m2: 250,
+      price_amount: 12,
+      price_text: "12$/m2/tháng",
+      price_currency: "USD",
+      price_basis: "per_m2",
+      price_period: "Theo tháng",
+      lease_term_text: "HĐ tối thiểu 2 năm",
+      furniture_status: null,
+      furniture_list: "trần sàn điều hòa trung tâm",
+      landlord_commission_text: null,
+      our_share_percent: null,
+      our_share_text: null,
+      key_details: {
+        vi: "Văn phòng Duy Tân, Cầu Giấy tầng 7, DT 250m2, giá 12$/m2/tháng. Bàn giao trần sàn điều hòa trung tâm, HĐ tối thiểu 2 năm.",
+        en: "Office Duy Tan, Cau Giay 7th floor, 250m2, rent 12 USD/m2/month. Central AC, ceiling, floor, min 2-yr contract.",
+        zh: "维新写字楼，纸桥郡7层，250平米，租金12美元/平米/月。交付中央空调吊顶地板，合同至少2年。"
+      }
+    }
   }
 ];
 
@@ -364,5 +519,127 @@ export function extractMultiFloorAreas(
   }
 
   return null;
+}
+
+export interface GroundingAuditResult {
+  is_verified: boolean;
+  citations: {
+    price?: string | null;
+    floor_area?: string | null;
+    furniture?: string | null;
+  };
+  audit_notes: string[];
+}
+
+/**
+ * KIỂM TOÁN VIÊN LOGIC ĐỘC LẬP (Deterministic Grounding Auditor)
+ * Kiểm tra tính có mặt và độ khớp thực tế của các trường AI bóc tách với đoạn tin nhắn gốc.
+ * Không đoán mò, không đè số tùy tiện: Chỉ xác thực bằng chứng và chuẩn hóa logic ràng buộc.
+ */
+export function auditAndVerifyExtractedProperty(
+  prop: any,
+  rawSnippet: string
+): { prop: any; audit: GroundingAuditResult } {
+  const text = (rawSnippet || "").trim();
+  const lowerText = text.toLowerCase();
+  const audit_notes: string[] = [];
+
+  // 1. Kiểm toán Cơ sở tính giá (Price Basis Audit)
+  const priceSnippet = (prop.price_evidence || prop.price_text || "").toLowerCase();
+  const hasPerM2 =
+    /(?:\/|\/tháng\s*\/|\/th\s*\/|\/tháng\s*|mỗi\s*|trên\s*|theo\s*)\s*m[2²]/i.test(priceSnippet) ||
+    /\b(?:\d+k|\d+)\s*\/\s*m[2²]/i.test(priceSnippet) ||
+    /\b(?:k|đ|đồng|vnd|usd|\$)\s*\/\s*m[2²]/i.test(priceSnippet) ||
+    /(?:\/|\/tháng\s*\/|\/th\s*\/|\/tháng\s*|mỗi\s*|trên\s*|theo\s*)\s*m[2²]/i.test(lowerText) ||
+    /\b(?:\d+k|\d+)\s*\/\s*m[2²]/i.test(lowerText);
+
+  if (hasPerM2 || prop.price_basis === "per_m2" || String(prop.price_basis).toLowerCase().includes("m2")) {
+    prop.price_basis = "per_m2";
+    audit_notes.push("Cơ sở tính giá: Theo m² (phát hiện bằng chứng m² trong tin nhắn)");
+  } else {
+    prop.price_basis = "total";
+  }
+
+  // Chuẩn hóa tiền tệ
+  if (!prop.price_currency || prop.price_currency !== "USD") {
+    prop.price_currency = "VND";
+  }
+
+  // 2. Kiểm toán Diện tích mỗi tầng (Floor-Area Integrity Audit)
+  // Chỉ chấp nhận floor_area_m2 khi tin nhắn có nói rõ về số tầng / mỗi tầng / mỗi sàn
+  const hasFloorMention = /(?:\d+\s*tầng|mỗi\s*tầng|mỗi\s*sàn|\d+\s*lầu|tầng\s*\d+|sàn\s*\d+|x\s*\d+\s*t\b)/i.test(lowerText);
+
+  if (!hasFloorMention) {
+    if (prop.floor_area_m2) {
+      audit_notes.push(`Reset floor_area_m2 (${prop.floor_area_m2}) -> null vì tin nhắn không nhắc đến tầng/sàn`);
+    }
+    prop.floor_area_m2 = null;
+  } else {
+    // Có nhắc đến tầng: nếu AI gán nhầm floor_area_m2 bằng total_lease_area_m2 mà không phải nhà 1 tầng
+    if (
+      prop.total_lease_area_m2 &&
+      prop.floor_area_m2 &&
+      String(prop.floor_area_m2).trim() === String(prop.total_lease_area_m2).trim() &&
+      !/(?:nhà\s*1\s*tầng|kho\s*1\s*tầng|1\s*tầng\s*duy\s*nhất)/i.test(lowerText)
+    ) {
+      prop.floor_area_m2 = null;
+      audit_notes.push("Tránh trùng lặp tổng diện tích sang diện tích mỗi tầng -> reset floor_area_m2 về null");
+    }
+  }
+
+  // 3. Kiểm toán Nội thất nguyên bản (Verbatim Furniture Substring Verification)
+  prop.furniture_status = verifyVerbatimSpan(prop.furniture_status, text);
+  prop.furniture_list = verifyVerbatimSpan(prop.furniture_list, text) || prop.furniture_list || null;
+  prop.handover_condition = prop.furniture_status || null;
+
+  // 4. Kiểm toán điều kiện cấm (Negative Constraints Preservation)
+  const foodBanMatch = text.match(/không\s*(?:làm\s*)?(?:hàng\s*ăn|ăn\s*uống|kinh\s*doanh\s*ăn\s*uống|quán\s*ăn)/i);
+  if (foodBanMatch && prop.key_details) {
+    if (!/không\s*(?:làm\s*)?(?:hàng\s*ăn|ăn\s*uống)/i.test(prop.key_details.vi || "")) {
+      prop.key_details.vi = `${prop.key_details.vi ? prop.key_details.vi + ". " : ""}Chủ nhà không cho làm hàng ăn/ăn uống`;
+      audit_notes.push("Bảo tồn điều kiện cấm hàng ăn (VI)");
+    }
+    if (!/no\s*(?:f&b|food|restaurant)/i.test(prop.key_details.en || "")) {
+      prop.key_details.en = `${prop.key_details.en ? prop.key_details.en + ". " : ""}No F&B allowed`;
+    }
+    if (!/禁止餐饮/i.test(prop.key_details.zh || "")) {
+      prop.key_details.zh = `${prop.key_details.zh ? prop.key_details.zh + "。" : ""}禁止餐饮`;
+    }
+  }
+
+  // 5. Làm sạch triệt để các trường thiếu về NULL
+  const cleanField = (val: any) => {
+    if (val === undefined || val === null) return null;
+    const s = String(val).trim();
+    if (s === "" || s.toLowerCase() === "null" || s.toLowerCase() === "undefined" || s.toLowerCase() === "chưa rõ") {
+      return null;
+    }
+    return val;
+  };
+
+  prop.house_number = cleanField(prop.house_number);
+  prop.street_name = cleanField(prop.street_name);
+  prop.ward = cleanField(prop.ward);
+  prop.district_legacy = cleanField(prop.district_legacy);
+  prop.province = cleanField(prop.province);
+  prop.price_period = cleanField(prop.price_period);
+  prop.lease_term_text = cleanField(prop.lease_term_text);
+  prop.landlord_commission_text = cleanField(prop.landlord_commission_text);
+  prop.our_share_text = cleanField(prop.our_share_text);
+  prop.floor_area_m2 = cleanField(prop.floor_area_m2);
+  if (prop.floor_area_m2) prop.floor_area_m2 = String(prop.floor_area_m2);
+
+  // 6. Xây dựng kết quả kiểm toán bằng chứng
+  const audit: GroundingAuditResult = {
+    is_verified: true,
+    citations: {
+      price: cleanField(prop.price_evidence) || cleanField(prop.price_text),
+      floor_area: cleanField(prop.floor_area_evidence),
+      furniture: cleanField(prop.furniture_evidence) || cleanField(prop.furniture_status),
+    },
+    audit_notes,
+  };
+
+  return { prop, audit };
 }
 

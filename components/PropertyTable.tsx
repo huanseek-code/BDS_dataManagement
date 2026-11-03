@@ -201,8 +201,8 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
       ? editForm.property_types_text.split(",").map((s: string) => s.trim()).filter(Boolean)
       : (Array.isArray(editForm.property_types) ? editForm.property_types : [editForm.property_types].filter(Boolean));
 
-    if (!editForm.province?.trim() || typesArray.length === 0) {
-      alert("Vui lòng điền Loại hình BĐS và Tỉnh/Thành phố!");
+    if (typesArray.length === 0) {
+      alert("Vui lòng chọn hoặc điền ít nhất một Loại hình BĐS!");
       return;
     }
 
@@ -958,7 +958,7 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-[11px] font-semibold text-slate-600 block mb-1">
-                        Tỉnh / TP <span className="text-rose-500">*</span>
+                        Tỉnh / TP
                       </label>
                       <input
                         type="text"

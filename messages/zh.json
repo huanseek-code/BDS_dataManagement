@@ -125,7 +125,7 @@
     "placeholderPrice": "例如: 85000 或 55000000",
     "placeholderCommission": "例如: 1个月租金",
     "placeholderShare": "例如: 50%",
-    "validationRequired": "批准录入前请至少选择一项物业类型并填写省份/城市！",
+    "validationRequired": "批准录入前请至少选择一项物业类型！",
     "undoMerge": "撤销合并",
     "undoMergeConfirm": "您确定要撤销合并并将原先两条房源独立恢复吗？",
     "undoMergeSuccess": "撤销合并成功！两条独立房源已完整恢复。",

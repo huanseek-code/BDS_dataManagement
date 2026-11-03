@@ -1,7 +1,13 @@
 import "server-only";
 import { Type } from "@google/genai";
 import { executeWithKeyRotation } from "./key-manager";
-import { getGoldenSamplesForPrompt, verifyVerbatimSpan, detectPricePeriod, extractMultiFloorAreas } from "./golden-samples";
+import {
+  getGoldenSamplesForPrompt,
+  verifyVerbatimSpan,
+  detectPricePeriod,
+  extractMultiFloorAreas,
+  auditAndVerifyExtractedProperty,
+} from "./golden-samples";
 
 export interface ExtractedProperty {
   source_text_snippet: string | null;
@@ -94,8 +100,9 @@ QUY TẮC CỐT LÕI:
    - Luôn sao chép NGUYÊN VĂN chuỗi giá vào "price_text" (ví dụ: "85k/m2", "50 triệu/tháng", "2000$", "200 tr/ tháng", "55tr").
    - QUÉT TOÀN BỘ CHUỖI TIN NHẮN: Quét kỹ các tin nhắn trao đổi tiếp nối để tìm giá tiền, TUYỆT ĐỐI KHÔNG để price_amount: null nếu trong văn bản có bất kỳ mức giá nào được nhắc đến.
    - PHÂN BIỆT CƠ SỞ TÍNH GIÁ (price_basis):
-     * Nhà ở, căn hộ, biệt thự, nhà phố: điền price_basis: "Tổng căn".
-     * Kho bãi, nhà xưởng, đất, văn phòng cho thuê theo mét vuông: BẮT BUỘC điền price_basis: "Theo m²".
+     * KHI GIÁ TÍNH THEO MÉT VUÔNG (ví dụ: "150K / m2", "150k/m2", "85000đ/m2", "100k/m2/tháng", "12$/m2", "giá theo m2", "đơn giá /m2"): BẮT BUỘC ĐIỀN price_basis: "Theo m²".
+     * KHI GIÁ TÍNH TRỌN CĂN / TỔNG DIỆN TÍCH (ví dụ: "50 triệu/tháng", "16tr", "200 tr/ tháng", "18tr"): BẮT BUỘC ĐIỀN price_basis: "Tổng căn".
+     * Kho bãi, nhà xưởng, đất, văn phòng cho thuê báo giá theo m2: BẮT BUỘC điền price_basis: "Theo m²".
 
 4. LOẠI HÌNH BĐS (property_types) - GIỮ NGUYÊN BẢN TIẾNG VIỆT:
    - Trích xuất NGUYÊN MẪU cụm từ chỉ loại hình BĐS có trong tin nhắn dưới dạng tiếng Việt (ví dụ: ["Nhà liền kề"], ["Nhà mặt phố"], ["Căn hộ chung cư"], ["Biệt thự"], ["Kho xưởng"], ["Văn phòng"], ["Mặt bằng kinh doanh"]...).
@@ -103,12 +110,16 @@ QUY TẮC CỐT LÕI:
    - BẮT BUỘC phải gán ít nhất 1 loại hình phù hợp, TUYỆT ĐỐI KHÔNG để mảng rỗng [].
 
 5. NGUYÊN TẮC BẢO TOÀN DỮ LIỆU GỐC, KHÔNG GIAN HÌNH HỌC & TỪ ĐIỂN CHUẨN (STRICT FIDELITY & GLOSSARY):
-   - DIỆN TÍCH MỖI TẦNG (floor_area_m2) & TỔNG DIỆN TÍCH (total_lease_area_m2):
-     * "total_lease_area_m2": Luôn là TỔNG TOÀN BỘ DIỆN TÍCH CHO THUÊ (ví dụ: 180m2 x 8 tầng = 1440; hoặc Tầng 1: 50m, Tầng 2: 70m, Tầng 3: 80m -> Tổng = 50 + 70 + 80 = 200).
+   - TỔNG DIỆN TÍCH (total_lease_area_m2) & DIỆN TÍCH MỖI TẦNG (floor_area_m2):
+     * "total_lease_area_m2": Luôn là TỔNG TOÀN BỘ DIỆN TÍCH CHO THUÊ (ví dụ: "tổng MB kho DT 1800m" -> 1800; "180m2 x 8 tầng" -> 1440; "Tầng 1: 50m, Tầng 2: 70m, Tầng 3: 80m" -> 200; "kho xưởng 800m2" -> 800; "căn hộ 65m2" -> 65).
      * "floor_area_m2" (DIỆN TÍCH MỖI TẦNG):
-       - NẾU CÁC TẦNG ĐỀU NHAU (hoặc nhà 1 tầng, chung cư, kho xưởng): Điền 1 con số diện tích mỗi tầng (ví dụ: "180m2 x 8 tầng" -> "180", "90m2 x 5 tầng" -> "90", "63m2" -> "63").
-       - NẾU DIỆN TÍCH CÁC TẦNG KHÁC NHAU: Liệt kê diện tích từng tầng cách nhau bằng dấu phẩy theo thứ tự từ tầng 1 lên (ví dụ: "Tầng 1: 50m, Tầng 2: 70m, Tầng 3: 80m" -> điền "50, 70, 80").
-       - TUYỆT ĐỐI KHÔNG chỉ lấy mỗi tầng 1 mà bỏ sót các tầng khác khi các tầng có diện tích khác nhau!
+       - QUY TẮC CỐT LÕI: CHỈ ĐIỀN KHI TIN NHẮN CÓ NÓI RÕ DIỆN TÍCH TỪNG TẦNG / DIỆN TÍCH MỖI TẦNG / DIỆN TÍCH 1 SÀN!
+         * Ví dụ có nhiều tầng và nói rõ: "180m2 x 8 tầng" -> floor_area_m2: "180" (mỗi tầng 180m2).
+         * Ví dụ các tầng khác nhau: "Tầng 1: 50m, Tầng 2: 70m, Tầng 3: 80m" -> floor_area_m2: "50, 70, 80".
+         * Ví dụ nói rõ "mỗi sàn 100m2" -> floor_area_m2: "100".
+       - TUYỆT ĐỐI CẤM TỰ Ý ĐIỀN VÀO floor_area_m2 KHI TIN NHẮN KHÔNG ĐỀ CẬP DIỆN TÍCH MỖI TẦNG:
+         * Nếu tin nhắn chỉ nói tổng diện tích hoặc mặt bằng chung (ví dụ: "tổng MB kho DT 1800m", "kho xưởng 1800m", "đất 2000m2", "MBKD 80m", "kho cao 8-9m", "căn hộ 65m2"): BẮT BUỘC ĐỂ floor_area_m2: NULL!
+         * TUYỆT ĐỐI KHÔNG copy tổng diện tích sang floor_area_m2 khi không có thông tin về diện tích từng tầng!
      * Giữ chính xác từng mét vuông số lẻ (ví dụ: 213m2 là 213, không được làm tròn thành 210 hay 215).
 
    - NỘI THẤT & DANH SÁCH MÓN ĐỒ (VERBATIM SPAN EXTRACTION - TRÍCH NGUYÊN GỐC TỪNG CHỮ):
@@ -222,6 +233,26 @@ ${rawText}`;
                       type: Type.STRING,
                       description: "Đoạn tin nhắn gốc nguyên văn của riêng căn BĐS này",
                     },
+                    reasoning: {
+                      type: Type.STRING,
+                      nullable: true,
+                      description: "Giải thích ngắn gọn trước khi bóc tách: căn này có nói diện tích từng tầng không, giá tính trọn căn hay theo m2, các trường nào thiếu để null.",
+                    },
+                    price_evidence: {
+                      type: Type.STRING,
+                      nullable: true,
+                      description: "Chuỗi ký tự nguyên bản thể hiện giá tiền trong tin nhắn (ví dụ: '150K / m2', '60tr/ tháng')",
+                    },
+                    floor_area_evidence: {
+                      type: Type.STRING,
+                      nullable: true,
+                      description: "Chuỗi ký tự nguyên bản thể hiện số tầng / diện tích từng tầng (ví dụ: '60m x 4 tầng', 'mỗi sàn 100m'). Nếu không có nhắc đến tầng thì bắt buộc null.",
+                    },
+                    furniture_evidence: {
+                      type: Type.STRING,
+                      nullable: true,
+                      description: "Chuỗi ký tự nguyên bản thể hiện đồ đạc/hiện trạng nội thất",
+                    },
                     address_text: { type: Type.STRING },
                     house_number: { type: Type.STRING, nullable: true },
                     street_name: { type: Type.STRING, nullable: true },
@@ -235,17 +266,23 @@ ${rawText}`;
                     floor_area_m2: {
                       type: Type.STRING,
                       nullable: true,
-                      description: "Diện tích mỗi tầng. Nếu các tầng bằng nhau hoặc nhà 1 tầng: ghi 1 số (vd: '180', '90'). Nếu các tầng khác nhau: liệt kê cách nhau bằng dấu phẩy theo thứ tự từ tầng 1 lên (vd: '50, 70, 80').",
+                      description: "Diện tích mỗi tầng. CHỈ ĐIỀN KHI TIN NHẮN CÓ NÓI RÕ DIỆN TÍCH TỪNG TẦNG. Nếu tin nhắn chỉ nói tổng diện tích chung: BẮT BUỘC ĐỂ NULL.",
                     },
                     total_lease_area_m2: { type: Type.NUMBER, nullable: true },
                     price_amount: { type: Type.NUMBER, nullable: true },
-                    price_currency: { type: Type.STRING },
+                    price_currency: {
+                      type: Type.STRING,
+                      enum: ["VND", "USD"],
+                    },
                     price_period: {
                       type: Type.STRING,
                       nullable: true,
                       description: "Chỉ ghi 'Theo tháng', 'Theo năm', hoặc 'Một lần' nếu tin nhắn có từ ngữ nêu rõ kỳ hạn. Nếu không có chữ theo tháng/năm thì bắt buộc để null.",
                     },
-                    price_basis: { type: Type.STRING },
+                    price_basis: {
+                      type: Type.STRING,
+                      enum: ["total", "per_m2"],
+                    },
                     price_text: { type: Type.STRING, nullable: true },
                     lease_term_text: { type: Type.STRING, nullable: true },
                     key_details: {
@@ -341,11 +378,13 @@ ${rawText}`;
 function postProcessListing(prop: ExtractedProperty, fullText: string): ExtractedProperty {
   const text = `${prop.source_text_snippet || ""} ${fullText || ""}`;
 
-  // 1. Chốt chặn xác thực chuỗi con nguyên bản (Zero-Hallucination Substring Verifier):
-  // Bất kỳ chữ nào không có trong tin nhắn gốc -> tự động loại bỏ về null
-  prop.furniture_status = verifyVerbatimSpan(prop.furniture_status, text);
-  prop.furniture_list = verifyVerbatimSpan(prop.furniture_list, text) || prop.furniture_list || null;
-  prop.handover_condition = prop.furniture_status || null;
+  // 1. Kiểm toán logic độc lập & xác minh bằng chứng (Grounding Auditor)
+  const { prop: auditedProp, audit } = auditAndVerifyExtractedProperty(prop, text);
+  prop = auditedProp;
+
+  if (prop.key_details) {
+    (prop.key_details as any).grounding_audit = audit;
+  }
 
   // 2. Fallback giá tiền nếu price_amount bị null/0 mà trong văn bản có giá
   if (!prop.price_amount || prop.price_amount <= 0) {
@@ -368,66 +407,28 @@ function postProcessListing(prop: ExtractedProperty, fullText: string): Extracte
         if (!prop.price_text) prop.price_text = `${priceMatch[1]} USD`;
       }
     }
+  } else if (prop.price_amount > 0 && prop.price_amount < 1000 && prop.price_currency !== "USD") {
+    prop.price_amount = Math.round(prop.price_amount * 1000000);
   }
 
   // 3. Fallback diện tích đa tầng & diện tích từng tầng
   const multiFloorAreas = extractMultiFloorAreas(text);
   if (multiFloorAreas) {
-    // Nếu có bóc tách đa tầng cụ thể (vd: T1: 50m, T2: 70m, T3: 80m -> '50, 70, 80')
     prop.floor_area_m2 = multiFloorAreas.floorAreaStr;
     if (!prop.total_lease_area_m2 || prop.total_lease_area_m2 <= 0) {
       prop.total_lease_area_m2 = multiFloorAreas.totalArea;
     }
-  } else if (!prop.floor_area_m2) {
-    const multiFloorMatch = text.match(/(\d+(?:[.,]\d+)?)\s*m2?\s*[x*]\s*(\d+)\s*tầng/i);
-    if (multiFloorMatch) {
-      const perFloor = parseFloat(multiFloorMatch[1].replace(",", "."));
-      const floors = parseInt(multiFloorMatch[2], 10);
-      prop.floor_area_m2 = String(perFloor);
-      if (!prop.total_lease_area_m2) {
-        prop.total_lease_area_m2 = Math.round(perFloor * floors);
-      }
-    }
-  } else if (typeof prop.floor_area_m2 === "number") {
-    prop.floor_area_m2 = String(prop.floor_area_m2);
   }
 
-  // 4. Bảo tồn điều kiện cấm "không làm hàng ăn"
-  const foodBanMatch = text.match(/không\s*(?:làm\s*)?(?:hàng\s*ăn|ăn\s*uống|kinh\s*doanh\s*ăn\s*uống|quán\s*ăn)/i);
-  if (foodBanMatch && prop.key_details) {
-    if (!/không\s*(?:làm\s*)?(?:hàng\s*ăn|ăn\s*uống)/i.test(prop.key_details.vi)) {
-      prop.key_details.vi += " (Không làm hàng ăn/uống)";
-    }
-    if (!/no\s*(?:f&b|food|restaurant)/i.test(prop.key_details.en)) {
-      prop.key_details.en += " (No F&B/restaurant allowed)";
-    }
-    if (!/禁止餐饮/i.test(prop.key_details.zh)) {
-      prop.key_details.zh += " (禁止餐饮餐饮业)";
-    }
-  }
-
-  // 5. Chuẩn hóa tỷ lệ tiền triệu nếu price_amount nhỏ hơn 1000 (ví dụ AI trả 12 thay vì 12000000)
-  if (prop.price_amount && prop.price_amount > 0 && prop.price_amount < 1000) {
-    prop.price_amount = Math.round(prop.price_amount * 1000000);
-  }
-
-  // 6. Giữ nguyên bản tiếng Việt cho Cách tính giá & Kỳ hạn
-  if (prop.price_basis === "per_m2" || String(prop.price_basis).toLowerCase().includes("m2") || String(prop.price_basis).toLowerCase().includes("m²")) {
-    prop.price_basis = "Theo m²";
-  } else {
-    prop.price_basis = "Tổng căn";
-  }
-
-  // Xác thực kỳ hạn giá: chỉ gán khi tin nhắn thực sự có từ ngữ chỉ kỳ hạn
+  // 4. Kỳ hạn giá chuẩn xác
   const detectedPeriod = detectPricePeriod(prop.price_text, prop.source_text_snippet || text);
   if (detectedPeriod) {
     prop.price_period = detectedPeriod;
   } else {
-    // Tin nhắn KHÔNG CÓ chữ tháng/năm/bán -> Tuyệt đối không tự suy diễn hay dịch nghĩa theo tháng!
     prop.price_period = null;
   }
 
-  // 7. Chuẩn hóa tiếng Việt cho Loại hình BĐS
+  // 5. Chuẩn hóa tiếng Việt cho Loại hình BĐS
   const TYPE_MAP: Record<string, string> = {
     townhouse: "Nhà phố",
     apartment: "Chung cư",

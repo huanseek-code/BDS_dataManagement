@@ -149,7 +149,7 @@ export async function processBatchSubmission(
           price_amount: prop.price_amount || null,
           price_currency: prop.price_currency || "VND",
           price_period: prop.price_period || null,
-          price_basis: prop.price_basis || "total",
+          price_basis: (prop.price_basis === "per_m2" || String(prop.price_basis).toLowerCase().includes("m2") || String(prop.price_basis).toLowerCase().includes("m²")) ? "per_m2" : "total",
           price_text: prop.price_text || null,
           key_details: {
             ...((prop.key_details || {}) as any),

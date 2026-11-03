@@ -125,7 +125,7 @@
     "placeholderPrice": "e.g. 85000 or 55000000",
     "placeholderCommission": "e.g. 1 month rent",
     "placeholderShare": "e.g. 50%",
-    "validationRequired": "Please select at least one Property Type and enter Province before approving!",
+    "validationRequired": "Please select at least one Property Type before approving!",
     "undoMerge": "Undo Merge",
     "undoMergeConfirm": "Are you sure you want to undo this merge and restore the 2 original listings?",
     "undoMergeSuccess": "Successfully undone merge! Both original listings have been restored intact.",

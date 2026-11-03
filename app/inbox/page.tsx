@@ -52,5 +52,17 @@ export default async function InboxPage() {
     .eq("review_status", "pending")
     .order("created_at", { ascending: false });
 
-  return <InboxView initialListings={pendingListings || []} />;
+  // Fetch approved properties for duplicate detection
+  const { data: existingProperties } = await supabase
+    .from("properties")
+    .select("id, code, address_text, total_lease_area_m2, price_amount, created_at")
+    .order("created_at", { ascending: false })
+    .limit(300);
+
+  return (
+    <InboxView
+      initialListings={pendingListings || []}
+      existingProperties={existingProperties || []}
+    />
+  );
 }

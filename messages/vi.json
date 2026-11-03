@@ -125,7 +125,7 @@
     "placeholderPrice": "VD: 85000 hoặc 55000000",
     "placeholderCommission": "VD: 1 tháng",
     "placeholderShare": "VD: 50%",
-    "validationRequired": "Vui lòng chọn ít nhất một Loại hình BĐS và điền Tỉnh/Thành phố trước khi duyệt!",
+    "validationRequired": "Vui lòng chọn ít nhất một Loại hình BĐS trước khi duyệt!",
     "undoMerge": "Hoàn tác gộp",
     "undoMergeConfirm": "Bạn có chắc chắn muốn hoàn tác gộp để tách lại 2 BĐS ban đầu không?",
     "undoMergeSuccess": "Đã hoàn tác gộp thành công! Hai hồ sơ đã phục hồi nguyên vẹn.",

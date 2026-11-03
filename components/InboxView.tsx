@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations, useLocale } from "next-intl";
+import { createClient } from "@/lib/supabase/client";
 import {
   CheckCircle2,
   XCircle,
@@ -44,8 +45,10 @@ const AVAILABLE_PROPERTY_TYPES = [
 
 export function InboxView({
   initialListings,
+  existingProperties = [],
 }: {
   initialListings: any[];
+  existingProperties?: any[];
 }) {
   const t = useTranslations();
   const locale = useLocale();
@@ -63,6 +66,107 @@ export function InboxView({
   const [formState, setFormState] = useState<any>(
     initialListings[0] ? extractFormData(initialListings[0]) : null
   );
+
+  // Đồng bộ listings khi props thay đổi
+  useEffect(() => {
+    setListings(initialListings);
+    if (!selectedListing && initialListings.length > 0) {
+      setSelectedListing(initialListings[0]);
+      setFormState(extractFormData(initialListings[0]));
+    }
+  }, [initialListings]);
+
+  // Supabase Realtime Subscription: Tự động cập nhật Hộp thư khi có BĐS mới được AI bóc tách
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel("inbox-realtime-listings")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "property_listings",
+        },
+        () => {
+          router.refresh();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [router]);
+
+  // Tự động kiểm tra BĐS trùng lặp tiềm năng (Duplicate Detection)
+  const duplicateCandidate = useMemo(() => {
+    if (!selectedListing || !formState?.address_text) return null;
+    const currentAddr = (formState.address_text || "").toLowerCase().trim();
+    if (currentAddr.length < 3) return null;
+
+    const currentArea = Number(formState.total_lease_area_m2) || null;
+
+    const isSimilarAddress = (otherAddr: string) => {
+      const a = currentAddr.replace(/^(nhà|căn hộ|chung cư|kho xưởng|cho thuê|bán)\s+/i, "").trim();
+      const b = otherAddr.toLowerCase().replace(/^(nhà|căn hộ|chung cư|kho xưởng|cho thuê|bán)\s+/i, "").trim();
+      if (!a || !b) return false;
+      if (a.includes(b) || b.includes(a)) return true;
+      const wordsA = a.split(/[\s,.-]+/).filter((w) => w.length > 2);
+      const matchCount = wordsA.filter((w) => b.includes(w)).length;
+      return wordsA.length >= 2 && matchCount >= Math.min(2, wordsA.length);
+    };
+
+    // 1. Kiểm tra đối chiếu với Kho BĐS chính thức (properties đã duyệt)
+    for (const p of existingProperties || []) {
+      const pAddr = (p.address_text || "").toLowerCase().trim();
+      if (!pAddr) continue;
+
+      if (isSimilarAddress(pAddr)) {
+        let areaMatch = true;
+        if (currentArea && p.total_lease_area_m2) {
+          const diff = Math.abs(currentArea - Number(p.total_lease_area_m2));
+          areaMatch = diff <= currentArea * 0.2;
+        }
+
+        if (areaMatch) {
+          return {
+            type: "approved",
+            code: p.code || `#${p.id.slice(0, 6)}`,
+            message: `Căn này có thể trùng với BĐS [${p.code || p.id.slice(0, 8)}] đã có trong Kho BĐS`,
+            detail: `${p.address_text}${p.total_lease_area_m2 ? ` • DT: ${p.total_lease_area_m2}m²` : ""}${p.price_amount ? ` • Giá: ${formatPrice(p.price_amount, locale)}` : ""}`,
+          };
+        }
+      }
+    }
+
+    // 2. Kiểm tra đối chiếu với các tin khác đang chờ duyệt trong Inbox
+    for (const other of listings || []) {
+      if (other.id === selectedListing.id) continue;
+      const otherAddr = (other.address_text || "").toLowerCase().trim();
+      if (!otherAddr) continue;
+
+      if (isSimilarAddress(otherAddr)) {
+        let areaMatch = true;
+        const otherArea = Number(other.total_lease_area_m2) || null;
+        if (currentArea && otherArea) {
+          const diff = Math.abs(currentArea - otherArea);
+          areaMatch = diff <= currentArea * 0.2;
+        }
+
+        if (areaMatch) {
+          return {
+            type: "pending",
+            code: `Tin #${other.id.slice(0, 6)}`,
+            message: `Trùng lặp với một tin chờ duyệt khác từ ${other.partner?.display_name || "đối tác"}`,
+            detail: `${other.address_text}${other.total_lease_area_m2 ? ` • DT: ${other.total_lease_area_m2}m²` : ""}`,
+          };
+        }
+      }
+    }
+
+    return null;
+  }, [selectedListing, formState?.address_text, formState?.total_lease_area_m2, existingProperties, listings, locale]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -83,6 +187,9 @@ export function InboxView({
       : (typeof listing.property_types === "string" ? [listing.property_types] : ["Nhà phố"]);
     const propertyTypesText = rawTypes.join(", ");
 
+    const rawBasis = String(listing.price_basis || "").toLowerCase().trim();
+    const isPerM2 = rawBasis === "per_m2" || rawBasis.includes("m2") || rawBasis.includes("m²");
+
     return {
       province: listing.province || "",
       address_text: listing.address_text || "",
@@ -92,8 +199,8 @@ export function InboxView({
       floor_area_m2: listing.floor_area_m2 || "",
       price_amount: listing.price_amount || "",
       price_currency: listing.price_currency || "VND",
-      price_basis: listing.price_basis || "total",
-      price_basis_text: listing.price_basis === "per_m2" ? "Theo m²" : "Tổng căn",
+      price_basis: isPerM2 ? "per_m2" : "total",
+      price_basis_text: isPerM2 ? "Theo m²" : "Tổng căn",
       price_period:
         listing.price_period === "monthly" ? "month" : (listing.price_period || ""),
       price_period_text:
@@ -136,14 +243,18 @@ export function InboxView({
       ? formState.property_types_text.split(",").map((s: string) => s.trim()).filter(Boolean)
       : (Array.isArray(formState.property_types) ? formState.property_types : [formState.property_types].filter(Boolean));
 
-    // PRE-APPROVAL VALIDATION GATE
-    if (!formState.province?.trim() || typesArray.length === 0) {
+    // PRE-APPROVAL VALIDATION GATE - Chỉ yêu cầu Loại hình BĐS, BỎ BẮT BUỘC TỈNH/THÀNH PHỐ
+    if (typesArray.length === 0) {
       alert(t("inbox.validationRequired"));
       return;
     }
 
     setIsSubmitting(true);
     try {
+      const isPerM2 = formState.price_basis === "per_m2" ||
+        String(formState.price_basis_text || "").toLowerCase().includes("m2") ||
+        String(formState.price_basis_text || "").toLowerCase().includes("m²");
+
       const res = await fetch("/api/inbox/action", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -156,7 +267,7 @@ export function InboxView({
             total_lease_area_m2: formState.total_lease_area_m2 ? Number(formState.total_lease_area_m2) : null,
             floor_area_m2: formState.floor_area_m2 ? String(formState.floor_area_m2).trim() : null,
             price_amount: formState.price_amount ? Number(formState.price_amount) : null,
-            price_basis: formState.price_basis || "total",
+            price_basis: isPerM2 ? "per_m2" : "total",
             price_period: formState.price_period || formState.price_period_text || null,
             price_text: formState.price_text || null,
             attachments: formState.attachments || [],
@@ -325,7 +436,7 @@ export function InboxView({
   // Tính ước tính tổng tiền nếu là giá theo m2
   const estimatedTotalPrice =
     formState &&
-    formState.price_basis === "per_m2" &&
+    (formState.price_basis === "per_m2" || String(formState.price_basis_text || "").toLowerCase().includes("m2") || String(formState.price_basis_text || "").toLowerCase().includes("m²")) &&
     formState.price_amount &&
     formState.total_lease_area_m2
       ? Number(formState.price_amount) * Number(formState.total_lease_area_m2)
@@ -593,6 +704,39 @@ export function InboxView({
                     <span className="text-[10px] text-slate-400">{t("inbox.editableHint")}</span>
                   </div>
 
+                  {/* Kiểm toán xác thực bằng chứng (Grounding Audit Badge) */}
+                  {selectedListing?.key_details?.grounding_audit && (
+                    <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px]">
+                      <div className="flex items-center gap-1.5 font-medium">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                        <span>Kiểm toán xác thực: 100% bằng chứng trích xuất từ tin nhắn</span>
+                      </div>
+                      {selectedListing.key_details.grounding_audit.citations?.price && (
+                        <span className="text-[10px] text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded font-mono">
+                          Giá: {selectedListing.key_details.grounding_audit.citations.price}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Cảnh báo BĐS trùng lặp tiềm năng (Duplicate Detection Alert) */}
+                  {duplicateCandidate && (
+                    <div className="p-3 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 text-xs flex items-start gap-2.5 animate-in fade-in shadow-xs">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1 space-y-0.5">
+                        <div className="font-bold flex items-center gap-1.5">
+                          <span>{duplicateCandidate.message}</span>
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 font-bold uppercase tracking-wider">
+                            {duplicateCandidate.type === "approved" ? "Kho chính" : "Chờ duyệt"}
+                          </span>
+                        </div>
+                        <p className="text-amber-800 text-[11px] leading-relaxed">
+                          {duplicateCandidate.detail}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="space-y-3 p-4 rounded-xl border border-slate-200 bg-white max-h-[720px] overflow-y-auto shadow-sm">
                     {/* Loại hình BĐS (Dòng text thuần túy) */}
                     <div>
@@ -622,23 +766,19 @@ export function InboxView({
                       />
                     </div>
 
-                    {/* Tỉnh / TP (Bắt buộc) */}
+                    {/* Tỉnh / TP (Không bắt buộc) */}
                     <div>
                       <div className="flex items-center justify-between mb-1">
                         <label className="text-[11px] font-semibold text-slate-600 block">
-                          {t("inbox.province")} <span className="text-rose-500">*</span>
+                          {t("inbox.province")}
                         </label>
-                        {!formState.province?.trim() && (
-                          <span className="text-[10px] text-rose-600 font-bold">Bắt buộc</span>
-                        )}
                       </div>
                       <input
                         type="text"
                         value={formState.province}
                         onChange={(e) => setFormState({ ...formState, province: e.target.value })}
-                        className={`w-full px-3 py-1.5 text-xs rounded-lg border bg-slate-50 focus:bg-white focus:ring-2 focus:ring-sky-500 ${
-                          !formState.province?.trim() ? "border-rose-300 ring-1 ring-rose-200" : "border-slate-200"
-                        }`}
+                        placeholder="Để trống nếu không rõ..."
+                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-sky-500 font-medium text-slate-800"
                       />
                     </div>
 

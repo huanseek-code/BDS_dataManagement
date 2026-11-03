@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
       street_name: propertyData.street_name ?? currentProp.street_name,
       ward: propertyData.ward ?? currentProp.ward,
       district_legacy: propertyData.district_legacy ?? currentProp.district_legacy,
-      province: propertyData.province ?? currentProp.province,
+      province: propertyData.province !== undefined ? (propertyData.province?.trim() || null) : currentProp.province,
       property_types: Array.isArray(propertyData.property_types)
         ? propertyData.property_types
         : currentProp.property_types,
@@ -46,7 +46,9 @@ export async function POST(req: NextRequest) {
       price_amount: propertyData.price_amount ? Number(propertyData.price_amount) : null,
       price_currency: propertyData.price_currency || currentProp.price_currency || "VND",
       price_period: propertyData.price_period || currentProp.price_period || "month",
-      price_basis: propertyData.price_basis || currentProp.price_basis || "total",
+      price_basis: propertyData.price_basis
+        ? (propertyData.price_basis === "per_m2" || String(propertyData.price_basis).toLowerCase().includes("m2") ? "per_m2" : "total")
+        : (currentProp.price_basis || "total"),
       price_text: propertyData.price_text ?? currentProp.price_text,
       landlord_commission_text: propertyData.landlord_commission_text ?? currentProp.landlord_commission_text,
       our_share_percent: propertyData.our_share_percent !== undefined
