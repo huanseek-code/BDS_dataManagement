@@ -30,6 +30,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
+import { findDuplicateCandidate } from "@/lib/utils/duplicate-detector";
 
 const AVAILABLE_PROPERTY_TYPES = [
   { key: "factory", vi: "Nhà xưởng", en: "Factory", zh: "厂房" },
@@ -99,74 +100,41 @@ export function InboxView({
     };
   }, [router]);
 
-  // Tự động kiểm tra BĐS trùng lặp tiềm năng (Duplicate Detection)
+  // Tự động kiểm tra BĐS trùng lặp tiềm năng (Duplicate Detection nâng cao)
   const duplicateCandidate = useMemo(() => {
     if (!selectedListing || !formState?.address_text) return null;
-    const currentAddr = (formState.address_text || "").toLowerCase().trim();
-    if (currentAddr.length < 3) return null;
-
-    const currentArea = Number(formState.total_lease_area_m2) || null;
-
-    const isSimilarAddress = (otherAddr: string) => {
-      const a = currentAddr.replace(/^(nhà|căn hộ|chung cư|kho xưởng|cho thuê|bán)\s+/i, "").trim();
-      const b = otherAddr.toLowerCase().replace(/^(nhà|căn hộ|chung cư|kho xưởng|cho thuê|bán)\s+/i, "").trim();
-      if (!a || !b) return false;
-      if (a.includes(b) || b.includes(a)) return true;
-      const wordsA = a.split(/[\s,.-]+/).filter((w: string) => w.length > 2);
-      const matchCount = wordsA.filter((w: string) => b.includes(w)).length;
-      return wordsA.length >= 2 && matchCount >= Math.min(2, wordsA.length);
-    };
-
-    // 1. Kiểm tra đối chiếu với Kho BĐS chính thức (properties đã duyệt)
-    for (const p of existingProperties || []) {
-      const pAddr = (p.address_text || "").toLowerCase().trim();
-      if (!pAddr) continue;
-
-      if (isSimilarAddress(pAddr)) {
-        let areaMatch = true;
-        if (currentArea && p.total_lease_area_m2) {
-          const diff = Math.abs(currentArea - Number(p.total_lease_area_m2));
-          areaMatch = diff <= currentArea * 0.2;
-        }
-
-        if (areaMatch) {
-          return {
-            type: "approved",
-            code: p.code || `#${p.id.slice(0, 6)}`,
-            message: `Căn này có thể trùng với BĐS [${p.code || p.id.slice(0, 8)}] đã có trong Kho BĐS`,
-            detail: `${p.address_text}${p.total_lease_area_m2 ? ` • DT: ${p.total_lease_area_m2}m²` : ""}${p.price_amount ? ` • Giá: ${formatPrice(p.price_amount, locale)}` : ""}`,
-          };
-        }
-      }
-    }
-
-    // 2. Kiểm tra đối chiếu với các tin khác đang chờ duyệt trong Inbox
-    for (const other of listings || []) {
-      if (other.id === selectedListing.id) continue;
-      const otherAddr = (other.address_text || "").toLowerCase().trim();
-      if (!otherAddr) continue;
-
-      if (isSimilarAddress(otherAddr)) {
-        let areaMatch = true;
-        const otherArea = Number(other.total_lease_area_m2) || null;
-        if (currentArea && otherArea) {
-          const diff = Math.abs(currentArea - otherArea);
-          areaMatch = diff <= currentArea * 0.2;
-        }
-
-        if (areaMatch) {
-          return {
-            type: "pending",
-            code: `Tin #${other.id.slice(0, 6)}`,
-            message: `Trùng lặp với một tin chờ duyệt khác từ ${other.partner?.display_name || "đối tác"}`,
-            detail: `${other.address_text}${other.total_lease_area_m2 ? ` • DT: ${other.total_lease_area_m2}m²` : ""}`,
-          };
-        }
-      }
-    }
-
-    return null;
-  }, [selectedListing, formState?.address_text, formState?.total_lease_area_m2, existingProperties, listings, locale]);
+    return findDuplicateCandidate(
+      {
+        id: selectedListing.id,
+        address_text: formState.address_text,
+        total_lease_area_m2: formState.total_lease_area_m2,
+        price_amount: formState.price_amount,
+      },
+      (existingProperties || []).map((p: any) => ({
+        id: p.id,
+        code: p.code,
+        address_text: p.address_text,
+        total_lease_area_m2: p.total_lease_area_m2,
+        price_amount: p.price_amount,
+      })),
+      (listings || []).map((l: any) => ({
+        id: l.id,
+        address_text: l.address_text,
+        total_lease_area_m2: l.total_lease_area_m2,
+        price_amount: l.price_amount,
+        partner_name: l.partner?.display_name,
+      })),
+      locale
+    );
+  }, [
+    selectedListing,
+    formState?.address_text,
+    formState?.total_lease_area_m2,
+    formState?.price_amount,
+    existingProperties,
+    listings,
+    locale,
+  ]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
