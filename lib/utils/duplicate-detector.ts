@@ -32,7 +32,7 @@ const REAL_ESTATE_STOPWORDS = new Set([
   "thi", "dep", "re", "kinh", "doanh", "sieu", "vip", "gia", "thong",
   "thang", "may", "noi", "that", "dong", "tien", "khach", "san_nha",
   "phu", "hop", "moi", "chinh", "chu", "goc", "2", "3", "4", "5",
-  "dat", "dich", "vu", "mbkd", "mb", "dt", "mt"
+  "dat", "dich", "vu", "mbkd", "mb", "dt", "mt", "kdt", "so"
 ]);
 
 // Danh sách ghép cặp cấp Quận / Huyện / Tỉnh để không nhầm lẫn với tên phố hoặc phân khu
@@ -53,6 +53,9 @@ const COMPOUND_GEO_RULES: [RegExp, string][] = [
   [/\btay ho\b/gi, "geo_tayho"],
   [/\bhoan kiem\b/gi, "geo_hoankiem"],
   [/\bhoai duc\b/gi, "geo_hoaiduc"],
+  [/\bbac\s*32\b/gi, "route_bac32"],
+  [/\bquoc lo\s*32\b/gi, "route_bac32"],
+  [/\bql\s*32\b/gi, "route_bac32"],
   [/\bme linh\b/gi, "geo_melinh"],
   [/\bsoc son\b/gi, "geo_socson"],
   [/\bdong anh\b/gi, "geo_donganh"],
@@ -87,13 +90,24 @@ export function extractAddressEntities(rawAddress: string | null | undefined): {
 
   const rawLower = rawAddress.toLowerCase().trim();
 
+  // Loại bỏ các con số diện tích (m2, m) và phép nhân số tầng trước khi trích xuất số nhà và mã tòa
+  const cleanForEntities = rawLower
+    .replace(/\b\d+\s*(?:m2|m²|m\b)/gi, "")
+    .replace(/[xX×]\s*\d+\s*(?:tầng|tang|t\b)?/gi, "")
+    .replace(/\b(?:quoc lo|ql|bac|bắc|nam|duong|đường|so|số|ngõ|ngách)\s*\d+/gi, "");
+
   // 1. Tìm mã tòa nhà / phân khu (vd: GS6, S106, S403, R3, R1.02, HH02, CT1, A3...)
   let buildingCode: string | null = null;
-  const buildingMatch = rawAddress.match(/\b([a-zA-Z]{1,3}\s*[-.]?\s*\d{1,4}[a-zA-Z]?)\b/);
+  const buildingMatch = cleanForEntities.match(
+    /\b([a-zA-Z]{1,3}\s*[-.]?\s*\d{1,4}(?:[-.]\d{1,4})?[a-zA-Z]?)\b/
+  );
   if (buildingMatch) {
     const code = buildingMatch[1].replace(/[\s.-]/g, "").toUpperCase();
-    // Loại trừ các từ viết tắt phổ biến không phải mã tòa (như MT, DT, WC, LB, PK, F1)
-    if (!["MT", "DT", "WC", "LB", "PK", "F1", "F2", "F3", "MB", "QD", "TT"].includes(code)) {
+    // Loại trừ các từ viết tắt phổ biến không phải mã tòa (như MT, DT, WC, LB, PK, F1, X5...)
+    if (
+      !["MT", "DT", "WC", "LB", "PK", "F1", "F2", "F3", "MB", "QD", "TT", "M2"].includes(code) &&
+      !code.startsWith("X")
+    ) {
       buildingCode = code;
     }
   }
@@ -107,13 +121,9 @@ export function extractAddressEntities(rawAddress: string | null | undefined): {
 
   // 3. Tìm số nhà (vd: số 151, số 104, 151 Định Công...)
   let houseNumber: string | null = null;
-  const houseMatch = rawLower.match(/(?:số|nhà)?\s*(\d+[a-zA-Z]?)\s*(?:phố|đường|[\s,-]|$)/);
+  const houseMatch = cleanForEntities.match(/(?:số|nhà)?\s*(\d+[a-zA-Z]?)\s*(?:phố|đường|[\s,-]|$)/);
   if (houseMatch && !buildingCode) {
-    const num = houseMatch[1].toUpperCase();
-    // Bỏ qua các số diện tích hoặc số tầng (ví dụ 100m, 4 tầng)
-    if (!rawLower.includes(`${num}m`) && !rawLower.includes(`${num} tầng`)) {
-      houseNumber = num;
-    }
+    houseNumber = houseMatch[1].toUpperCase();
   }
 
   // 4. Chuẩn hóa bỏ dấu và lọc stopwords
@@ -122,7 +132,9 @@ export function extractAddressEntities(rawAddress: string | null | undefined): {
     unaccented = unaccented.replace(regex, replacement);
   }
   const words = unaccented.split(/\s+/).filter(Boolean);
-  const coreTokens = words.filter((w) => w.length >= 2 && !REAL_ESTATE_STOPWORDS.has(w));
+  const coreTokens = words.filter(
+    (w) => w.length >= 2 && !REAL_ESTATE_STOPWORDS.has(w) && !/^\d+m[2²]?$/i.test(w)
+  );
 
   return {
     houseNumber,
@@ -196,10 +208,11 @@ export function computeAddressSimilarity(addrA: string, addrB: string): {
 
   // Kiểm tra quan trọng 2: Bẫy tên đường (ví dụ 'Láng Hạ' vs 'Láng', 'Kim Mã Thượng' vs 'Kim Mã')
   // Các từ định hướng / phân đoạn tên đường (Hạ, Thượng, Mới, Cũ, Nam, Bắc, Đông, Tây)
-  const STREET_QUALIFIERS = new Set(["ha", "thuong", "moi", "cu", "nam", "bac", "dong", "tay", "nho", "lon"]);
-  for (const q of STREET_QUALIFIERS) {
-    if ((setA.has(q) && !setB.has(q)) || (!setA.has(q) && setB.has(q))) {
-      if (intersectionTokens.length <= 2 && !hasExactBuildingMatch && !hasExactHouseMatch) {
+  // Chỉ kiểm tra bẫy tên đường nếu KHÔNG cùng mã tòa nhà (tránh nhầm lẫn hướng ban công như Đông Nam, Tây Bắc trong cùng tòa)
+  if (!hasExactBuildingMatch) {
+    const STREET_QUALIFIERS = new Set(["ha", "thuong", "moi", "cu", "nam", "bac", "dong", "tay", "nho", "lon"]);
+    for (const q of STREET_QUALIFIERS) {
+      if ((setA.has(q) && !setB.has(q)) || (!setA.has(q) && setB.has(q))) {
         return { similarity: 0, isHardMismatch: true, mismatchReason: `Khác biệt định danh tuyến phố (${q.toUpperCase()})` };
       }
     }
