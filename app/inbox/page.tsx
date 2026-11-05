@@ -8,20 +8,24 @@ export const revalidate = 0;
 export default async function InboxPage() {
   const supabase = createAdminClient();
 
-  // Tự động quét và xử lý bất kỳ submission nào đã qua thời gian gom tin (25s) mà chưa xử lý
+  // Tự động quét và xử lý bất kỳ submission nào đã qua thời gian gom tin (25s) mà chưa hoàn tất
   try {
     const nowIso = new Date().toISOString();
     const { data: expiredSubs } = await supabase
       .from("submissions")
-      .select("id")
-      .eq("status", "queued")
-      .neq("ai_status", "processing")
+      .select("id, ai_status, updated_at")
+      .in("status", ["queued", "collecting"])
       .neq("ai_status", "done")
       .lte("close_at", nowIso)
       .limit(5);
 
     if (expiredSubs && expiredSubs.length > 0) {
       for (const sub of expiredSubs) {
+        // Nếu đang processing nhưng chưa kẹt quá 2 phút thì để tiến trình cũ tiếp tục
+        if (sub.ai_status === "processing") {
+          const isStuck = !sub.updated_at || new Date(sub.updated_at).getTime() < Date.now() - 2 * 60 * 1000;
+          if (!isStuck) continue;
+        }
         await processBatchSubmission(sub.id);
       }
     }

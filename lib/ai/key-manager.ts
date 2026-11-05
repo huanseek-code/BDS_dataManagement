@@ -101,15 +101,14 @@ export function getKeyPoolStatus() {
 }
 
 /**
- * Danh sách các Model Gemini 3.x ưu tiên theo thứ tự hiện đại nhất (Hoàn toàn loại bỏ 2.5)
+ * Danh sách các Model Gemini ưu tiên: thế hệ 3.x siêu tốc độ và thông minh nhất
  */
 export const GEMINI_3X_MODELS = Array.from(
   new Set([
-    process.env.GEMINI_MODEL || "gemini-3.6-flash",
-    "gemini-3.6-flash",
+    process.env.GEMINI_MODEL || "gemini-3-flash-preview",
     "gemini-3-flash-preview",
     "gemini-3.1-flash-lite",
-    "gemini-3.5-flash",
+    "gemini-3.6-flash",
     "gemini-2.5-flash",
   ])
 ).filter(Boolean);
@@ -161,11 +160,11 @@ export async function executeWithKeyRotation<T>(
     // Thử qua chuỗi Model Gemini 3.x
     for (const modelToTry of GEMINI_3X_MODELS) {
       try {
-        // Bảo vệ timeout 15s để không bị treo nếu một model gặp nghẽn mạng từ Google
+        // Bảo vệ timeout 45s để đủ thời gian cho Gemini phân tích batch dài
         const result = (await Promise.race([
           action(ai, selectedKey, modelToTry),
           new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("GATEWAY_TIMEOUT_15S")), 15000)
+            setTimeout(() => reject(new Error("GATEWAY_TIMEOUT_45S")), 45000)
           ),
         ])) as T;
 

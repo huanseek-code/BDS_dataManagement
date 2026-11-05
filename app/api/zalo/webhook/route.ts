@@ -150,7 +150,8 @@ export async function POST(req: NextRequest) {
           .from("submissions")
           .update({
             close_at: debouncedCloseAt,
-            status: "queued",
+            // Giữ status là 'collecting' để nếu đối tác gửi dồn nhiều tin trong 25s,
+            // Postgres ingest_zalo_message sẽ gom chung vào submission này thay vì phân mảnh
             ai_status: "pending",
             updated_at: new Date().toISOString(),
           })
@@ -186,21 +187,23 @@ export async function POST(req: NextRequest) {
                 .eq("id", subId)
                 .single();
 
-              // Nếu submission vẫn đang 'queued' và chưa ai xử lý
+              // Nếu submission chưa xong và không đang được tiến trình khác xử lý
               if (
                 curSub &&
-                curSub.status === "queued" &&
-                curSub.ai_status !== "processing" &&
-                curSub.ai_status !== "done"
+                curSub.ai_status !== "done" &&
+                curSub.ai_status !== "processing"
               ) {
                 const closeAtMs = new Date(curSub.close_at).getTime();
                 // Chỉ kích hoạt nếu đã qua close_at (không có tin mới gửi thêm trong 25 giây)
                 if (Date.now() >= closeAtMs - 1500) {
                   const { data: locked } = await sAdmin
                     .from("submissions")
-                    .update({ ai_status: "processing", updated_at: new Date().toISOString() })
+                    .update({ 
+                      status: "queued",
+                      ai_status: "processing", 
+                      updated_at: new Date().toISOString() 
+                    })
                     .eq("id", subId)
-                    .eq("status", "queued")
                     .neq("ai_status", "processing")
                     .select("id")
                     .maybeSingle();

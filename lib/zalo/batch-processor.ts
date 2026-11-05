@@ -202,7 +202,11 @@ export async function processBatchSubmission(
       .eq("id", submissionId);
 
     console.log(`[Batch Processor] Hoàn tất batch ${submissionId}: Đã tạo ${insertedCount} căn BĐS sạch.`);
-    revalidatePath("/inbox");
+    try {
+      revalidatePath("/inbox");
+    } catch {
+      // Bỏ qua khi hàm chạy ngầm ngoài request lifecycle của Next.js
+    }
 
     return {
       success: true,

@@ -44,13 +44,15 @@ async function handleCronTick(req: NextRequest) {
       console.error("Error closing expired submissions:", closeError);
     }
 
-    // 2. Tìm tất cả các submissions đang 'queued' mà đã qua thời điểm close_at (hoặc close_reason = idle_timeout)
+    // 2. Tìm tất cả các submissions đang 'queued' hoặc 'collecting' mà đã qua thời điểm close_at
     const nowIso = new Date().toISOString();
+    const twoMinutesAgoIso = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+
     const { data: queuedSubs } = await supabaseAdmin
       .from("submissions")
-      .select("id")
-      .eq("status", "queued")
-      .neq("ai_status", "processing")
+      .select("id, status, ai_status, updated_at")
+      .in("status", ["queued", "collecting"])
+      .neq("ai_status", "done")
       .lte("close_at", nowIso)
       .limit(10);
 
@@ -59,6 +61,11 @@ async function handleCronTick(req: NextRequest) {
       if (cs.submission_id) targetSubIds.add(cs.submission_id);
     }
     for (const qs of queuedSubs || []) {
+      // Nếu đang processing nhưng chưa quá 2 phút thì để tiến trình đó chạy tiếp
+      if (qs.ai_status === "processing") {
+        const isStuck = !qs.updated_at || new Date(qs.updated_at).getTime() < Date.now() - 2 * 60 * 1000;
+        if (!isStuck) continue;
+      }
       if (qs.id) targetSubIds.add(qs.id);
     }
 
