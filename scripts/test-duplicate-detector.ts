@@ -239,6 +239,78 @@ const testCases: TestCase[] = [
     },
     expectedDuplicate: false,
   },
+  {
+    name: "Ca bẫy tên đường (Substring trap): Phố Láng Hạ vs Đường Láng",
+    target: {
+      address_text: "Mặt phố Láng Hạ, Đống Đa",
+      total_lease_area_m2: 100,
+      price_amount: 40000000,
+    },
+    candidate: {
+      address_text: "Mặt đường Láng, Đống Đa",
+      total_lease_area_m2: 100,
+      price_amount: 40000000,
+    },
+    expectedDuplicate: false,
+  },
+  {
+    name: "Cùng đại đô thị nhưng khác phân khu: Vinhomes Ocean Park San Hô vs Sao Biển",
+    target: {
+      address_text: "Biệt thự San Hô, Vinhomes Ocean Park",
+      total_lease_area_m2: 150,
+      price_amount: 35000000,
+    },
+    candidate: {
+      address_text: "Biệt thự Sao Biển, Vinhomes Ocean Park",
+      total_lease_area_m2: 150,
+      price_amount: 35000000,
+    },
+    expectedDuplicate: false,
+  },
+  {
+    name: "Cùng tòa nhà nhưng một bên là căn hộ ở, một bên là mặt bằng kinh doanh tầng trệt",
+    target: {
+      address_text: "Mặt bằng kinh doanh tầng 1 Tòa Lancaster Núi Trúc",
+      total_lease_area_m2: 120,
+      price_amount: 60000000,
+    },
+    candidate: {
+      address_text: "Căn hộ 3PN tầng 15 Tòa Lancaster Núi Trúc",
+      total_lease_area_m2: 120,
+      price_amount: 25000000,
+    },
+    expectedDuplicate: false,
+  },
+  {
+    name: "TRÙNG LẶP THỰC TẾ 5: 2 Môi giới đăng cùng căn nhưng viết tắt khác hẳn nhau",
+    target: {
+      address_text: "Chính chủ cho thuê nhà mp Trần Duy Hưng, Cầu Giấy",
+      total_lease_area_m2: 480,
+      floor_area_m2: "80",
+      price_amount: 70000000,
+    },
+    candidate: {
+      address_text: "Cho thuê nhà mặt phố Trần Duy Hưng",
+      total_lease_area_m2: 480,
+      floor_area_m2: "80",
+      price_amount: 70000000,
+    },
+    expectedDuplicate: true,
+  },
+  {
+    name: "Cùng phố nhưng khác ngõ / ngách: Ngách 12/4 Hoàng Cầu vs Ngõ 12 Hoàng Cầu",
+    target: {
+      address_text: "Số 5 ngách 12/4 Hoàng Cầu, Đống Đa",
+      total_lease_area_m2: 50,
+      price_amount: 12000000,
+    },
+    candidate: {
+      address_text: "Số 5 ngõ 12 Hoàng Cầu, Đống Đa",
+      total_lease_area_m2: 50,
+      price_amount: 12000000,
+    },
+    expectedDuplicate: false,
+  },
 ];
 
 console.log("=================================================");

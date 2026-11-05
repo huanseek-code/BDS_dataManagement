@@ -30,17 +30,42 @@ const REAL_ESTATE_STOPWORDS = new Set([
   "tang", "lau", "o", "to", "tranh", "do", "cua", "via", "he", "cho",
   "thue", "ban", "chuyen", "nhuong", "khu", "vuc", "du", "an", "do",
   "thi", "dep", "re", "kinh", "doanh", "sieu", "vip", "gia", "thong",
-  "san", "thang", "may", "noi", "that", "dong", "tien", "khach", "san",
+  "thang", "may", "noi", "that", "dong", "tien", "khach", "san_nha",
   "phu", "hop", "moi", "chinh", "chu", "goc", "2", "3", "4", "5",
   "dat", "dich", "vu", "mbkd", "mb", "dt", "mt"
 ]);
 
-// Danh sách các từ chỉ cấp Quận / Tỉnh (vùng địa lý rộng)
-// Việc chỉ trùng mỗi tên quận (như cùng ở 'Hà Đông' hay 'Cầu Giấy') KHÔNG ĐỦ để kết luận trùng BĐS
+// Danh sách ghép cặp cấp Quận / Huyện / Tỉnh để không nhầm lẫn với tên phố hoặc phân khu
+const COMPOUND_GEO_RULES: [RegExp, string][] = [
+  [/\bha noi\b/gi, "geo_hanoi"],
+  [/\bho chi minh\b/gi, "geo_hcm"],
+  [/\bsai gon\b/gi, "geo_saigon"],
+  [/\bcau giay\b/gi, "geo_caugiay"],
+  [/\bdong da\b/gi, "geo_dongda"],
+  [/\bhoang mai\b/gi, "geo_hoangmai"],
+  [/\bthanh xuan\b/gi, "geo_thanhxuan"],
+  [/\bhai ba trung\b/gi, "geo_haibatrung"],
+  [/\bba dinh\b/gi, "geo_badinh"],
+  [/\bnam tu liem\b/gi, "geo_namtuliem"],
+  [/\bbac tu liem\b/gi, "geo_bactuliem"],
+  [/\bha dong\b/gi, "geo_hadong"],
+  [/\blong bien\b/gi, "geo_longbien"],
+  [/\btay ho\b/gi, "geo_tayho"],
+  [/\bhoan kiem\b/gi, "geo_hoankiem"],
+  [/\bhoai duc\b/gi, "geo_hoaiduc"],
+  [/\bme linh\b/gi, "geo_melinh"],
+  [/\bsoc son\b/gi, "geo_socson"],
+  [/\bdong anh\b/gi, "geo_donganh"],
+  [/\bgia lam\b/gi, "geo_gialam"],
+  [/\bthanh tri\b/gi, "geo_thanhtri"],
+];
+
 const BROAD_GEO_TOKENS = new Set([
-  "ha", "noi", "hcm", "sai", "gon", "cau", "giay", "dong", "da", "hoang",
-  "mai", "thanh", "xuan", "hai", "ba", "trung", "ba", "dinh", "nam", "tu",
-  "liem", "bac", "ha", "dong", "long", "bien", "tay", "ho", "hoan", "kiem"
+  "geo_hanoi", "geo_hcm", "geo_saigon", "geo_caugiay", "geo_dongda",
+  "geo_hoangmai", "geo_thanhxuan", "geo_haibatrung", "geo_badinh",
+  "geo_namtuliem", "geo_bactuliem", "geo_hadong", "geo_longbien",
+  "geo_tayho", "geo_hoankiem", "geo_hoaiduc", "geo_melinh", "geo_socson",
+  "geo_donganh", "geo_gialam", "geo_thanhtri"
 ]);
 
 /**
@@ -52,11 +77,12 @@ const BROAD_GEO_TOKENS = new Set([
 export function extractAddressEntities(rawAddress: string | null | undefined): {
   houseNumber: string | null;
   buildingCode: string | null;
+  alleyNumber: string | null;
   coreTokens: string[];
   normalizedClean: string;
 } {
   if (!rawAddress) {
-    return { houseNumber: null, buildingCode: null, coreTokens: [], normalizedClean: "" };
+    return { houseNumber: null, buildingCode: null, alleyNumber: null, coreTokens: [], normalizedClean: "" };
   }
 
   const rawLower = rawAddress.toLowerCase().trim();
@@ -72,9 +98,16 @@ export function extractAddressEntities(rawAddress: string | null | undefined): {
     }
   }
 
-  // 2. Tìm số nhà (vd: số 151, số 104, ngõ 104, 151 Định Công...)
+  // 2. Tìm số ngõ / ngách / hẻm (vd: ngõ 12, ngách 12/4, hẻm 45...)
+  let alleyNumber: string | null = null;
+  const alleyMatch = rawLower.match(/(?:ngõ|ngách|hẻm)\s*(\d+(?:\/\d+)*[a-zA-Z]?)/i);
+  if (alleyMatch) {
+    alleyNumber = alleyMatch[1].toUpperCase();
+  }
+
+  // 3. Tìm số nhà (vd: số 151, số 104, 151 Định Công...)
   let houseNumber: string | null = null;
-  const houseMatch = rawLower.match(/(?:số|ngõ|ngách|nhà)?\s*(\d+[a-zA-Z]?)\s*(?:phố|đường|ngõ|[\s,-]|$)/);
+  const houseMatch = rawLower.match(/(?:số|nhà)?\s*(\d+[a-zA-Z]?)\s*(?:phố|đường|[\s,-]|$)/);
   if (houseMatch && !buildingCode) {
     const num = houseMatch[1].toUpperCase();
     // Bỏ qua các số diện tích hoặc số tầng (ví dụ 100m, 4 tầng)
@@ -83,14 +116,18 @@ export function extractAddressEntities(rawAddress: string | null | undefined): {
     }
   }
 
-  // 3. Chuẩn hóa bỏ dấu và lọc stopwords
-  const unaccented = normalizeVietnameseKey(rawAddress);
+  // 4. Chuẩn hóa bỏ dấu và lọc stopwords
+  let unaccented = normalizeVietnameseKey(rawAddress);
+  for (const [regex, replacement] of COMPOUND_GEO_RULES) {
+    unaccented = unaccented.replace(regex, replacement);
+  }
   const words = unaccented.split(/\s+/).filter(Boolean);
   const coreTokens = words.filter((w) => w.length >= 2 && !REAL_ESTATE_STOPWORDS.has(w));
 
   return {
     houseNumber,
     buildingCode,
+    alleyNumber,
     coreTokens,
     normalizedClean: coreTokens.join(" "),
   };
@@ -118,6 +155,11 @@ export function computeAddressSimilarity(addrA: string, addrB: string): {
     return { similarity: 0, isHardMismatch: true, mismatchReason: `Khác số nhà (${entA.houseNumber} vs ${entB.houseNumber})` };
   }
 
+  // Nếu cả 2 đều có số ngõ/ngách (ví dụ ngách 12/4 vs ngõ 12) mà KHÁC NHAU -> KHÔNG BAO GIỜ TRÙNG
+  if (entA.alleyNumber && entB.alleyNumber && entA.alleyNumber !== entB.alleyNumber) {
+    return { similarity: 0, isHardMismatch: true, mismatchReason: `Khác số ngõ/ngách (${entA.alleyNumber} vs ${entB.alleyNumber})` };
+  }
+
   if (entA.coreTokens.length === 0 || entB.coreTokens.length === 0) {
     return { similarity: 0, isHardMismatch: false };
   }
@@ -141,8 +183,8 @@ export function computeAddressSimilarity(addrA: string, addrB: string): {
     entA.houseNumber && entB.houseNumber && entA.houseNumber === entB.houseNumber
   );
 
-  // Kiểm tra quan trọng: Các từ khớp nhau có phải CHỈ TOÀN là từ chỉ quận/tỉnh diện rộng không?
-  // Ví dụ: chỉ cùng ở quận "ha dong" hay "cau giay" mà tên phố/khu vực (Mậu Lương vs Văn Phú) khác biệt -> KHÔNG TRÙNG!
+  // Kiểm tra quan trọng 1: Các từ khớp nhau có phải CHỈ TOÀN là từ chỉ quận/tỉnh diện rộng không?
+  // Ví dụ: chỉ cùng ở 'Hà Đông' hay 'Cầu Giấy' mà tên phố/khu vực (Mậu Lương vs Văn Phú) khác biệt -> KHÔNG TRÙNG!
   const hasSpecificStreetMatch = intersectionTokens.some((t) => !BROAD_GEO_TOKENS.has(t));
   if (!hasSpecificStreetMatch && !hasExactBuildingMatch && !hasExactHouseMatch) {
     return {
@@ -150,6 +192,33 @@ export function computeAddressSimilarity(addrA: string, addrB: string): {
       isHardMismatch: true,
       mismatchReason: "Chỉ trùng tên quận/huyện diện rộng, khác tên phố/khu vực cụ thể",
     };
+  }
+
+  // Kiểm tra quan trọng 2: Bẫy tên đường (ví dụ 'Láng Hạ' vs 'Láng', 'Kim Mã Thượng' vs 'Kim Mã')
+  // Các từ định hướng / phân đoạn tên đường (Hạ, Thượng, Mới, Cũ, Nam, Bắc, Đông, Tây)
+  const STREET_QUALIFIERS = new Set(["ha", "thuong", "moi", "cu", "nam", "bac", "dong", "tay", "nho", "lon"]);
+  for (const q of STREET_QUALIFIERS) {
+    if ((setA.has(q) && !setB.has(q)) || (!setA.has(q) && setB.has(q))) {
+      if (intersectionTokens.length <= 2 && !hasExactBuildingMatch && !hasExactHouseMatch) {
+        return { similarity: 0, isHardMismatch: true, mismatchReason: `Khác biệt định danh tuyến phố (${q.toUpperCase()})` };
+      }
+    }
+  }
+
+  // Kiểm tra quan trọng 3: Cùng Đại đô thị lớn nhưng KHÁC PHÂN KHU (vd: San Hô vs Sao Biển, Khu A vs Khu D)
+  const MEGA_PROJECTS = ["vinhomes", "geleximco", "ecopark", "gamuda", "ciputra", "splendora", "starlake"];
+  const isMegaA = entA.coreTokens.some(t => MEGA_PROJECTS.includes(t));
+  const isMegaB = entB.coreTokens.some(t => MEGA_PROJECTS.includes(t));
+  if (isMegaA && isMegaB) {
+    const diffA = entA.coreTokens.filter(t => !setB.has(t) && !BROAD_GEO_TOKENS.has(t) && !MEGA_PROJECTS.includes(t));
+    const diffB = entB.coreTokens.filter(t => !setA.has(t) && !BROAD_GEO_TOKENS.has(t) && !MEGA_PROJECTS.includes(t));
+    if (diffA.length > 0 && diffB.length > 0) {
+      return {
+        similarity: 0,
+        isHardMismatch: true,
+        mismatchReason: `Cùng khu đô thị nhưng khác phân khu (${diffA.join(" ")} vs ${diffB.join(" ")})`,
+      };
+    }
   }
 
   const unionCount = new Set([...entA.coreTokens, ...entB.coreTokens]).size;
