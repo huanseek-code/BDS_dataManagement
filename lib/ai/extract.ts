@@ -111,15 +111,22 @@ QUY TẮC CỐT LÕI:
 
 5. NGUYÊN TẮC BẢO TOÀN DỮ LIỆU GỐC, KHÔNG GIAN HÌNH HỌC & TỪ ĐIỂN CHUẨN (STRICT FIDELITY & GLOSSARY):
    - TỔNG DIỆN TÍCH (total_lease_area_m2) & DIỆN TÍCH MỖI TẦNG (floor_area_m2):
-     * "total_lease_area_m2": Luôn là TỔNG TOÀN BỘ DIỆN TÍCH CHO THUÊ (ví dụ: "tổng MB kho DT 1800m" -> 1800; "180m2 x 8 tầng" -> 1440; "Tầng 1: 50m, Tầng 2: 70m, Tầng 3: 80m" -> 200; "kho xưởng 800m2" -> 800; "căn hộ 65m2" -> 65).
-     * "floor_area_m2" (DIỆN TÍCH MỖI TẦNG):
-       - QUY TẮC CỐT LÕI: CHỈ ĐIỀN KHI TIN NHẮN CÓ NÓI RÕ DIỆN TÍCH TỪNG TẦNG / DIỆN TÍCH MỖI TẦNG / DIỆN TÍCH 1 SÀN!
-         * Ví dụ có nhiều tầng và nói rõ: "180m2 x 8 tầng" -> floor_area_m2: "180" (mỗi tầng 180m2).
-         * Ví dụ các tầng khác nhau: "Tầng 1: 50m, Tầng 2: 70m, Tầng 3: 80m" -> floor_area_m2: "50, 70, 80".
-         * Ví dụ nói rõ "mỗi sàn 100m2" -> floor_area_m2: "100".
-       - TUYỆT ĐỐI CẤM TỰ Ý ĐIỀN VÀO floor_area_m2 KHI TIN NHẮN KHÔNG ĐỀ CẬP DIỆN TÍCH MỖI TẦNG:
-         * Nếu tin nhắn chỉ nói tổng diện tích hoặc mặt bằng chung (ví dụ: "tổng MB kho DT 1800m", "kho xưởng 1800m", "đất 2000m2", "MBKD 80m", "kho cao 8-9m", "căn hộ 65m2"): BẮT BUỘC ĐỂ floor_area_m2: NULL!
-         * TUYỆT ĐỐI KHÔNG copy tổng diện tích sang floor_area_m2 khi không có thông tin về diện tích từng tầng!
+     * CÁC DẠNG CÔNG THỨC NHIỀU TẦNG PHỔ BIẾN:
+       - Dạng 'A m2 x B tầng' (hoặc 'A m² x B t', 'A mét x B tầng', 'A m x B tầng'):
+         * Con số A đứng trước dấu nhân luôn là DIỆN TÍCH 1 SÀN / DIỆN TÍCH MỖI TẦNG -> BẮT BUỘC ĐIỀN floor_area_m2: "A" (ví dụ: '50m² × 5 tầng' -> floor_area_m2: "50"; '120m² × 5 tầng' -> floor_area_m2: "120"; '70m2 x 8 tầng' -> floor_area_m2: "70"; '60m2 x 8 tầng' -> floor_area_m2: "60"; '40m² × 7 tầng' -> floor_area_m2: "40").
+         * Tổng diện tích cho thuê total_lease_area_m2 = A * B (ví dụ: 50 * 5 = 250; 120 * 5 = 600; 70 * 8 = 560; 60 * 8 = 480).
+       - Dạng có diện tích xây dựng riêng (ví dụ '190m² x 4 tầng (XD: 100m)'):
+         * floor_area_m2: "100" (diện tích xây dựng 1 sàn).
+         * total_lease_area_m2: 100 * 4 = 400.
+       - Dạng diện tích đất biệt thự có sân vườn (ví dụ 'Diện tích đất: 250m² x 5 Tầng'):
+         * floor_area_m2: "250".
+         * total_lease_area_m2: 250 (ghi nhận diện tích khuôn viên, TUYỆT ĐỐI KHÔNG nhân máy móc 250 x 5 = 1250).
+       - Dạng các tầng có diện tích khác nhau (ví dụ 'Tầng 1: 50m, Tầng 2: 70m, Tầng 3: 80m'):
+         * floor_area_m2: "50, 70, 80".
+         * total_lease_area_m2: 50 + 70 + 80 = 200.
+       - Dạng nhà 1 tầng, căn hộ chung cư, kho bãi, mặt bằng đơn (ví dụ 'kho xưởng 800m2', 'căn hộ 65m2', 'mặt bằng 80m'):
+         * total_lease_area_m2: số diện tích chung.
+         * floor_area_m2: để null vì là mặt phẳng đơn không chia tầng.
      * Giữ chính xác từng mét vuông số lẻ (ví dụ: 213m2 là 213, không được làm tròn thành 210 hay 215).
 
    - NỘI THẤT & DANH SÁCH MÓN ĐỒ (VERBATIM SPAN EXTRACTION - TRÍCH NGUYÊN GỐC TỪNG CHỮ):

@@ -369,7 +369,8 @@ export async function getGoldenSamplesForPrompt(): Promise<string> {
     const { data, error } = await (supabase as any)
       .from("ai_golden_samples")
       .select("pattern_type, raw_message, expected_extraction, description")
-      .limit(10);
+      .order("created_at", { ascending: false })
+      .limit(8);
 
     if (!error && Array.isArray(data) && data.length > 0) {
       samples = data as unknown as GoldenSample[];
@@ -481,8 +482,7 @@ export function extractMultiFloorAreas(
 ): { floorAreaStr: string; totalArea: number } | null {
   if (!text) return null;
 
-  // Regex nhận diện các mẫu:
-  // "Tầng 1: 50m", "Tầng 1 - 50m", "Tầng 1 là 50m", "T1: 50m", "T1 50m2", "+ Tầng 1: 50m, thông sàn"
+  // 1. Regex nhận diện các tầng cụ thể: "Tầng 1: 50m, Tầng 2: 70m"
   const floorRegex = /(?:tầng|t)\s*(\d+)[\s:là-]+(\d+(?:[.,]\d+)?)\s*m(?:2|²)?/gi;
   const matches = [...text.matchAll(floorRegex)];
 
@@ -491,7 +491,6 @@ export function extractMultiFloorAreas(
     for (const m of matches) {
       const fNum = parseInt(m[1], 10);
       const val = m[2].replace(",", ".");
-      // Bỏ qua tầng quá lớn vô lý (> 100 tầng) hoặc trùng tầng
       if (!floorMap.has(fNum) && fNum > 0 && fNum <= 100) {
         floorMap.set(fNum, val);
       }
@@ -504,18 +503,56 @@ export function extractMultiFloorAreas(
       const allEqual = numericValues.every((v) => v === numericValues[0]);
       const totalArea = Math.round(numericValues.reduce((sum, v) => sum + v, 0) * 100) / 100;
 
-      if (allEqual) {
-        return {
-          floorAreaStr: values[0],
-          totalArea,
-        };
-      } else {
-        return {
-          floorAreaStr: values.join(", "),
-          totalArea,
-        };
-      }
+      return {
+        floorAreaStr: allEqual ? values[0] : values.join(", "),
+        totalArea,
+      };
     }
+  }
+
+  // 2. Mẫu có diện tích xây dựng riêng: ví dụ "190m² x 4 tầng (XD: 100m)" hoặc "đất 250m2, xd 100m x 4 tầng"
+  const xdMatch = text.match(/(?:xd|xây\s*dựng|mặt\s*sàn)\s*[:\s]*(\d+(?:[.,]\d+)?)\s*m(?:2|²)?/i);
+  const floorCountMatch = text.match(/(\d+)\s*(?:tầng|t\b|lầu)/i);
+  if (xdMatch && floorCountMatch) {
+    const xdVal = xdMatch[1].replace(",", ".");
+    const floors = parseInt(floorCountMatch[1], 10);
+    const xdNum = parseFloat(xdVal);
+    if (xdNum > 0 && floors > 0 && floors <= 100) {
+      return {
+        floorAreaStr: xdVal,
+        totalArea: Math.round(xdNum * floors),
+      };
+    }
+  }
+
+  // 3. Mẫu phổ biến thực tế: "50m² × 5 tầng", "120m2 x 5 tầng", "70m2 x 8 tầng", "60m x 8 tầng", "40m2 x 7t"
+  const multiFloorMatch = text.match(/(\d+(?:[.,]\d+)?)\s*m(?:2|²)?\s*[x×*]\s*(\d+(?:[.,]\d+)?)\s*(?:tầng|t\b|lầu)/i);
+  if (multiFloorMatch) {
+    const perFloorVal = multiFloorMatch[1].replace(",", ".");
+    const floorsVal = multiFloorMatch[2].replace(",", ".");
+    const perFloor = parseFloat(perFloorVal);
+    const floors = parseFloat(floorsVal);
+
+    if (perFloor > 0 && floors > 0 && floors <= 100) {
+      // Kiểm tra xem số này có phải là 'diện tích đất' sân vườn hay không
+      const isLandArea = /diện\s*tích\s*đất|dt\s*đất/i.test(text);
+      return {
+        floorAreaStr: perFloorVal,
+        totalArea: isLandArea ? perFloor : Math.round(perFloor * floors),
+      };
+    }
+  }
+
+  // 4. Mẫu "mỗi sàn 100m2", "mỗi tầng 80m"
+  const eachFloorMatch = text.match(/mỗi\s*(?:sàn|tầng)\s*[:\s]*(\d+(?:[.,]\d+)?)\s*m(?:2|²)?/i);
+  if (eachFloorMatch) {
+    const val = eachFloorMatch[1].replace(",", ".");
+    const num = parseFloat(val);
+    const floors = floorCountMatch ? parseInt(floorCountMatch[1], 10) : 1;
+    return {
+      floorAreaStr: val,
+      totalArea: floors > 1 ? Math.round(num * floors) : num,
+    };
   }
 
   return null;
@@ -555,7 +592,7 @@ export function auditAndVerifyExtractedProperty(
 
   if (hasPerM2 || prop.price_basis === "per_m2" || String(prop.price_basis).toLowerCase().includes("m2")) {
     prop.price_basis = "per_m2";
-    audit_notes.push("Cơ sở tính giá: Theo m² (phát hiện bằng chứng m² trong tin nhắn)");
+    audit_notes.push("Cơ sở tính giá: Theo m²");
   } else {
     prop.price_basis = "total";
   }
@@ -566,30 +603,29 @@ export function auditAndVerifyExtractedProperty(
   }
 
   // 2. Kiểm toán Diện tích mỗi tầng (Floor-Area Integrity Audit)
-  // Chỉ chấp nhận floor_area_m2 khi tin nhắn có nói rõ về số tầng / mỗi tầng / mỗi sàn
-  const hasFloorMention = /(?:\d+\s*tầng|mỗi\s*tầng|mỗi\s*sàn|\d+\s*lầu|tầng\s*\d+|sàn\s*\d+|x\s*\d+\s*t\b)/i.test(lowerText);
+  if (text.length > 0) {
+    const hasFloorMention = /(?:\d+\s*(?:tầng|t\b|lầu|sàn)|mỗi\s*(?:tầng|sàn)|tầng\s*\d+|sàn\s*\d+|[x×*]\s*\d+\s*(?:tầng|t\b))/i.test(lowerText);
 
-  if (!hasFloorMention) {
-    if (prop.floor_area_m2) {
-      audit_notes.push(`Reset floor_area_m2 (${prop.floor_area_m2}) -> null vì tin nhắn không nhắc đến tầng/sàn`);
-    }
-    prop.floor_area_m2 = null;
-  } else {
-    // Có nhắc đến tầng: nếu AI gán nhầm floor_area_m2 bằng total_lease_area_m2 mà không phải nhà 1 tầng
-    if (
-      prop.total_lease_area_m2 &&
-      prop.floor_area_m2 &&
-      String(prop.floor_area_m2).trim() === String(prop.total_lease_area_m2).trim() &&
-      !/(?:nhà\s*1\s*tầng|kho\s*1\s*tầng|1\s*tầng\s*duy\s*nhất)/i.test(lowerText)
-    ) {
-      prop.floor_area_m2 = null;
-      audit_notes.push("Tránh trùng lặp tổng diện tích sang diện tích mỗi tầng -> reset floor_area_m2 về null");
+    if (!hasFloorMention && prop.floor_area_m2) {
+      // Chỉ reset nếu tin nhắn hoàn toàn không có yếu tố tầng hoặc sàn nào
+      if (!/(?:chung\s*cư|căn\s*hộ|kho\s*xưởng|mặt\s*bằng|đất)/i.test(lowerText)) {
+        prop.floor_area_m2 = null;
+        audit_notes.push(`Reset floor_area_m2 về null vì không tìm thấy tầng/sàn`);
+      }
     }
   }
 
-  // 3. Kiểm toán Nội thất nguyên bản (Verbatim Furniture Substring Verification)
-  prop.furniture_status = verifyVerbatimSpan(prop.furniture_status, text);
-  prop.furniture_list = verifyVerbatimSpan(prop.furniture_list, text) || prop.furniture_list || null;
+  // 3. Kiểm toán Nội thất nguyên bản
+  if (text.length > 0) {
+    const verifiedStatus = verifyVerbatimSpan(prop.furniture_status, text);
+    if (verifiedStatus) {
+      prop.furniture_status = verifiedStatus;
+    }
+    const verifiedList = verifyVerbatimSpan(prop.furniture_list, text);
+    if (verifiedList) {
+      prop.furniture_list = verifiedList;
+    }
+  }
   prop.handover_condition = prop.furniture_status || null;
 
   // 4. Kiểm toán điều kiện cấm (Negative Constraints Preservation)

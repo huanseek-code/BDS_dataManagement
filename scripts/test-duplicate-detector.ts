@@ -5,11 +5,15 @@ interface TestCase {
   target: {
     address_text: string;
     total_lease_area_m2?: number | null;
+    floor_area_m2?: string | null;
+    house_number?: string | null;
     price_amount?: number | null;
   };
   candidate: {
     address_text: string;
     total_lease_area_m2?: number | null;
+    floor_area_m2?: string | null;
+    house_number?: string | null;
     price_amount?: number | null;
   };
   expectedDuplicate: boolean;
@@ -203,6 +207,37 @@ const testCases: TestCase[] = [
       price_amount: 45000000,
     },
     expectedDuplicate: true,
+  },
+  {
+    name: "Feedback Khách: Hai căn Lideco khác nhau (250m2 38tr vs 120m2/600m2 45tr)",
+    target: {
+      address_text: "KDT Lideco Hoài Đức-Hà Nội",
+      total_lease_area_m2: 600,
+      floor_area_m2: "120",
+      price_amount: 45000000,
+    },
+    candidate: {
+      address_text: "Biệt thự KĐT Lideco",
+      total_lease_area_m2: 250,
+      floor_area_m2: "250",
+      price_amount: 38000000,
+    },
+    expectedDuplicate: false,
+  },
+  {
+    name: "Feedback Khách: Hai căn Lideco khi một căn bị thiếu total_lease_area_m2 nhưng có floor_area_m2 hoặc giá",
+    target: {
+      address_text: "KDT Lideco Hoài Đức-Hà Nội",
+      total_lease_area_m2: null,
+      floor_area_m2: "120",
+      price_amount: 45000000,
+    },
+    candidate: {
+      address_text: "Biệt thự KĐT Lideco",
+      total_lease_area_m2: 250,
+      price_amount: 38000000,
+    },
+    expectedDuplicate: false,
   },
 ];
 

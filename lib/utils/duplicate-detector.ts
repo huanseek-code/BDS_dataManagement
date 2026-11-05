@@ -5,7 +5,9 @@ export interface PropertyMatchTarget {
   code?: string;
   address_text?: string | null;
   total_lease_area_m2?: number | string | null;
+  floor_area_m2?: number | string | null;
   price_amount?: number | string | null;
+  house_number?: string | null;
   partner_name?: string | null;
 }
 
@@ -202,16 +204,29 @@ export function isPotentialDuplicate(
     };
   }
 
-  // 2. Kiểm toán Diện tích (nếu cả 2 đều có diện tích)
-  const areaA = target.total_lease_area_m2 ? Number(target.total_lease_area_m2) : null;
-  const areaB = candidate.total_lease_area_m2 ? Number(candidate.total_lease_area_m2) : null;
+  // 2. Kiểm toán Diện tích (nếu có diện tích sàn hoặc tổng diện tích)
+  let areaA = target.total_lease_area_m2 ? Number(target.total_lease_area_m2) : null;
+  let areaB = candidate.total_lease_area_m2 ? Number(candidate.total_lease_area_m2) : null;
+
+  if (!areaA && target.floor_area_m2) areaA = Number(target.floor_area_m2) || null;
+  if (!areaB && candidate.floor_area_m2) areaB = Number(candidate.floor_area_m2) || null;
+
+  // Thử trích xuất diện tích từ chuỗi text nếu vẫn rỗng
+  if (!areaA && target.address_text) {
+    const mA = target.address_text.match(/(\d+(?:[.,]\d+)?)\s*m(?:2|²)?/i);
+    if (mA) areaA = parseFloat(mA[1].replace(",", "."));
+  }
+  if (!areaB && candidate.address_text) {
+    const mB = candidate.address_text.match(/(\d+(?:[.,]\d+)?)\s*m(?:2|²)?/i);
+    if (mB) areaB = parseFloat(mB[1].replace(",", "."));
+  }
 
   if (areaA && areaB && areaA > 0 && areaB > 0) {
     const areaDiff = Math.abs(areaA - areaB);
     const maxArea = Math.max(areaA, areaB);
     const areaDiffPercent = areaDiff / maxArea;
 
-    // Nếu diện tích chênh lệch trên 15% (ví dụ 400m² vs 260m²) -> BẮT BUỘC KHÔNG TRÙNG
+    // Nếu diện tích chênh lệch trên 15% (ví dụ 250m² vs 120m², hoặc 400m² vs 260m²) -> BẮT BUỘC KHÔNG TRÙNG
     if (areaDiffPercent > 0.15) {
       return {
         isDuplicate: false,
@@ -222,15 +237,15 @@ export function isPotentialDuplicate(
   }
 
   // 3. Kiểm toán Giá tiền (nếu cả 2 đều có giá tiền)
-  const priceA = target.price_amount ? Number(target.price_amount) : null;
-  const priceB = candidate.price_amount ? Number(candidate.price_amount) : null;
+  let priceA = target.price_amount ? Number(target.price_amount) : null;
+  let priceB = candidate.price_amount ? Number(candidate.price_amount) : null;
 
   if (priceA && priceB && priceA > 0 && priceB > 0) {
     const priceDiff = Math.abs(priceA - priceB);
     const maxPrice = Math.max(priceA, priceB);
     const priceDiffPercent = priceDiff / maxPrice;
 
-    // Nếu giá chênh lệch trên 20% (ví dụ 32 triệu vs 55 triệu) -> BẮT BUỘC KHÔNG TRÙNG
+    // Nếu giá chênh lệch trên 20% (ví dụ 38 triệu vs 45 triệu, 32 triệu vs 55 triệu) -> BẮT BUỘC KHÔNG TRÙNG
     if (priceDiffPercent > 0.20) {
       return {
         isDuplicate: false,
@@ -238,6 +253,17 @@ export function isPotentialDuplicate(
         reason: `Mức giá khác biệt quá lớn (chênh ${(priceDiffPercent * 100).toFixed(0)}%)`,
       };
     }
+  }
+
+  // Nếu là tên khu đô thị / dự án lớn mà không có số nhà/mã căn và thiếu cả diện tích lẫn giá -> Không báo trùng bừa
+  const isUrbanProjectOnly = /(?:kdt|kđt|khu\s*đô\s*thị|vinhomes|lideco|ciputra|starlake|smart\s*city|ocean\s*park)/i.test(target.address_text || "");
+  const hasSpecificUnit = Boolean(target.house_number || candidate.house_number);
+  if (isUrbanProjectOnly && !hasSpecificUnit && (!areaA || !areaB) && (!priceA || !priceB)) {
+    return {
+      isDuplicate: false,
+      confidence: 0,
+      reason: "Cùng khu đô thị nhưng thiếu thông số diện tích/giá cụ thể để xác nhận trùng lặp",
+    };
   }
 
   // 4. Nếu địa chỉ khớp rất cao (>= 75%) và các thông số diện tích/giá (nếu có) không bị mâu thuẫn

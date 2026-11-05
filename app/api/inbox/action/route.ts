@@ -43,6 +43,48 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
 
+      // Tự động học từ các ca nhân viên sửa (Continuous Learning Feedback Loop)
+      try {
+        const { data: curListing } = await supabase
+          .from("property_listings")
+          .select("ai_extracted, location_note, address_text")
+          .eq("id", listingId)
+          .single();
+
+        const rawSnippet = curListing?.location_note || propertyData?.address_text;
+        const aiOriginal = (curListing?.ai_extracted || {}) as any;
+
+        const isModified =
+          String(propertyData?.floor_area_m2 || "").trim() !== String(aiOriginal?.floor_area_m2 || "").trim() ||
+          Number(propertyData?.price_amount || 0) !== Number(aiOriginal?.price_amount || 0) ||
+          Number(propertyData?.total_lease_area_m2 || 0) !== Number(aiOriginal?.total_lease_area_m2 || 0) ||
+          String(propertyData?.furniture_status || "").trim() !== String(aiOriginal?.furniture_status || "").trim();
+
+        if (isModified && rawSnippet && rawSnippet.length >= 20) {
+          await (supabase as any).from("ai_golden_samples").insert({
+            pattern_type: "human_reviewer_correction",
+            raw_message: rawSnippet,
+            expected_extraction: {
+              address_text: propertyData.address_text,
+              floor_area_m2: propertyData.floor_area_m2 || null,
+              total_lease_area_m2: propertyData.total_lease_area_m2 || null,
+              price_amount: propertyData.price_amount || null,
+              price_text: propertyData.price_text || null,
+              price_period: propertyData.price_period || null,
+              price_basis: propertyData.price_basis || "total",
+              property_types: propertyData.property_types || ["Nhà phố"],
+              furniture_status: propertyData.furniture_status || null,
+              furniture_list: propertyData.furniture_list || null,
+              key_details: propertyData.key_details || { vi: propertyData.address_text, en: "", zh: "" },
+            },
+            description: `Học tự động từ chỉnh sửa thực tế của nhân viên duyệt cho căn [${propertyData.address_text}]`,
+          });
+          console.log(`[Continuous Learning] Đã tự động lưu 1 mẫu sửa của nhân viên cho căn ${propertyData.address_text}`);
+        }
+      } catch (learnErr) {
+        console.warn("[Continuous Learning Error]:", learnErr);
+      }
+
       revalidatePath("/inbox");
       revalidatePath("/properties");
       return NextResponse.json({ success: true, result: data });
