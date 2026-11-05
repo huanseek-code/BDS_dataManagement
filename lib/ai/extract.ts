@@ -103,6 +103,17 @@ QUY TẮC CỐT LÕI:
      * KHI GIÁ TÍNH THEO MÉT VUÔNG (ví dụ: "150K / m2", "150k/m2", "85000đ/m2", "100k/m2/tháng", "12$/m2", "giá theo m2", "đơn giá /m2"): BẮT BUỘC ĐIỀN price_basis: "Theo m²".
      * KHI GIÁ TÍNH TRỌN CĂN / TỔNG DIỆN TÍCH (ví dụ: "50 triệu/tháng", "16tr", "200 tr/ tháng", "18tr"): BẮT BUỘC ĐIỀN price_basis: "Tổng căn".
      * Kho bãi, nhà xưởng, đất, văn phòng cho thuê báo giá theo m2: BẮT BUỘC điền price_basis: "Theo m²".
+   - TIẾNG LÓNG & TỪ VIẾT TẮT THÔNG DỤNG:
+     * "củ" = triệu đồng (ví dụ: "55 củ/tháng" -> price_amount: 55000000, price_period: "Theo tháng").
+     * "tm" = thang máy, "ac" = điều hòa, "mp" = mặt phố, "chdv" = căn hộ dịch vụ.
+   - SANG NHƯỢNG CỬA HÀNG / MẶT BẰNG:
+     * price_amount LUÔN LUÔN LÀ TIỀN THUÊ NHÀ ĐỊNH KỲ (ví dụ: "tiền nhà 25 triệu/tháng, sang nhượng đồ đạc 70 triệu" -> price_amount: 25000000, price_period: "Theo tháng").
+     * Phí sang nhượng đồ đạc / cơ sở vật chất ghi chú vào "key_details", TUYỆT ĐỐI KHÔNG lấy tiền sang nhượng gán vào price_amount.
+   - NHIỀU PHƯƠNG ÁN THUÊ TRONG 1 CĂN (Thuê lẻ sàn vs Thuê cả nhà):
+     * Lấy phương án toàn bộ cả nhà làm giá chính price_amount (ví dụ: "thuê cả toà 80tr/tháng, thuê tầng 1-2 là 35tr" -> price_amount: 80000000, total_lease_area_m2 của cả toà).
+     * Ghi chú chi tiết phương án thuê lẻ từng tầng vào "key_details".
+   - TIN NHẮN ĐÍNH CHÍNH / ĐIỀU CHỈNH TRONG DÒNG THỜI GIAN:
+     * Nếu chuỗi tin nhắn có tin gửi tiếp sau đính chính hoặc giảm giá (ví dụ: "chủ nhà vừa báo giảm còn 16.5tr/tháng"): BẮT BUỘC lấy giá và thông số mới nhất sau đính chính.
 
 4. LOẠI HÌNH BĐS (property_types) - GIỮ NGUYÊN BẢN TIẾNG VIỆT:
    - Trích xuất NGUYÊN MẪU cụm từ chỉ loại hình BĐS có trong tin nhắn dưới dạng tiếng Việt (ví dụ: ["Nhà liền kề"], ["Nhà mặt phố"], ["Căn hộ chung cư"], ["Biệt thự"], ["Kho xưởng"], ["Văn phòng"], ["Mặt bằng kinh doanh"]...).

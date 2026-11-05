@@ -106,7 +106,18 @@ NGUYÊN TẮC CỐT LÕI - BÓC TÁCH NGUYÊN GỐC CHỮ TRONG TIN NHẮN (STRI
      * Nếu tin nhắn không liệt kê món đồ nào thì để null hoặc "".
 
 6. GIÁ TIỀN & ĐƠN VỊ & CƠ SỞ TÍNH GIÁ (GIỮ NGUYÊN BẢN TIẾNG VIỆT):
-   - "price_amount": Con số quy đổi đầy đủ (ví dụ: "60 triệu/tháng" -> 60000000, "12 tr" -> 12000000, "150K / m2" -> 150000, "85k/m2" -> 85000; "2000$" -> 2000). Luôn tính đúng đơn vị triệu, tuyệt đối không để số 12 hay 85.
+   - "price_amount": Con số quy đổi đầy đủ (ví dụ: "60 triệu/tháng" -> 60000000, "12 tr" -> 12000000, "150K / m2" -> 150000, "85k/m2" -> 85000; "55 củ/tháng" -> 55000000; "2000$" -> 2000). Luôn tính đúng đơn vị triệu, tuyệt đối không để số 12 hay 85.
+   - TIẾNG LÓNG & TỪ VIẾT TẮT THÔNG DỤNG:
+     * "củ" = triệu đồng (ví dụ: "55 củ/tháng" -> price_amount: 55000000, price_period: "Theo tháng").
+     * "tm" = thang máy, "ac" = điều hòa, "mp" = mặt phố, "chdv" = căn hộ dịch vụ.
+   - SANG NHƯỢNG CỬA HÀNG / MẶT BẰNG:
+     * price_amount LUÔN LUÔN LÀ TIỀN THUÊ NHÀ ĐỊNH KỲ (ví dụ: "tiền nhà 25 triệu/tháng, sang nhượng đồ đạc 70 triệu" -> price_amount: 25000000, price_period: "Theo tháng").
+     * Phí sang nhượng đồ đạc / cơ sở vật chất ghi chú vào "key_details", TUYỆT ĐỐI KHÔNG lấy tiền sang nhượng gán vào price_amount.
+   - NHIỀU PHƯƠNG ÁN THUÊ TRONG 1 CĂN (Thuê lẻ sàn vs Thuê cả nhà):
+     * Lấy phương án toàn bộ cả nhà làm giá chính price_amount (ví dụ: "thuê cả toà 80tr/tháng, thuê tầng 1-2 là 35tr" -> price_amount: 80000000, total_lease_area_m2 của cả toà).
+     * Ghi chú chi tiết phương án thuê lẻ từng tầng vào "key_details".
+   - TIN NHẮN ĐÍNH CHÍNH / ĐIỀU CHỈNH TRONG DÒNG THỜI GIAN:
+     * Nếu chuỗi tin nhắn có tin gửi tiếp sau đính chính hoặc giảm giá (ví dụ: "chủ nhà vừa báo giảm còn 16.5tr/tháng"): BẮT BUỘC lấy giá và thông số mới nhất sau đính chính.
    - "price_currency": "VND" hoặc "USD".
    - "price_basis" (CƠ SỞ TÍNH GIÁ - PHÂN BIỆT RÕ):
      * KHI GIÁ TÍNH THEO MÉT VUÔNG (ví dụ: "150K / m2", "150k/m2", "85000đ/m2", "100k/m2/tháng", "12$/m2", "giá theo m2", "đơn giá /m2"): BẮT BUỘC ĐIỀN price_basis: "Theo m²".
@@ -374,6 +385,17 @@ function postProcessBatchListing(prop: any, snippetText: string): ExtractedPrope
       }
       if (!prop.total_lease_area_m2 || prop.total_lease_area_m2 <= 0) {
         prop.total_lease_area_m2 = multiFloorAreas.totalArea;
+      }
+    }
+  }
+
+  // 1b. Phục hồi diện tích đơn lẻ (căn hộ, mặt bằng tầng đơn, cửa hàng) nếu total_lease_area_m2 vẫn rỗng
+  if (!prop.total_lease_area_m2 || prop.total_lease_area_m2 <= 0) {
+    const singleAreaMatch = text.match(/(?:diện\s*tích|dt|mb|mbkd)?\s*[:\s]*(\d+(?:[.,]\d+)?)\s*m(?:2|²)?/i);
+    if (singleAreaMatch) {
+      const areaVal = parseFloat(singleAreaMatch[1].replace(",", "."));
+      if (areaVal > 5 && areaVal < 50000) {
+        prop.total_lease_area_m2 = areaVal;
       }
     }
   }

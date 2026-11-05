@@ -34,7 +34,14 @@ interface ExtractionScenario {
   id: string;
   name: string;
   description: string;
-  rawText: string;
+  rawText?: string;
+  timeline?: Array<{
+    msg_id: string;
+    time: number;
+    sent_time: string;
+    type: "text" | "photo";
+    text?: string;
+  }>;
   expected: {
     propertyCount: number;
     properties?: Array<{
@@ -46,6 +53,8 @@ interface ExtractionScenario {
       price_currency?: string;
       price_period?: string | null;
       furniture_status?: string | null;
+      landlord_commission_text?: string | null;
+      our_share_percent?: number | null;
       prohibitedKeywordsInViSummary?: string[];
       requiredKeywordsInViSummary?: string[];
     }>;
@@ -188,6 +197,139 @@ const scenarios: ExtractionScenario[] = [
       ],
     },
   },
+  {
+    id: "HARD_7",
+    name: "Nhiều phương án thuê: Thuê lẻ tầng vs Thuê toàn bộ toà nhà",
+    description: "Thuê lẻ tầng 1-2 giá 35tr vs Thuê cả nhà 80tr -> Lấy 80tr cả nhà làm chính",
+    rawText: `Cho thuê toà nhà 7 tầng phố Nguyễn Thị Định, Cầu Giấy.
+- Diện tích: 90m2 x 7 tầng, thang máy tốc độ cao, MT 6m.
+- Phương án 1: Thuê tầng 1-2 làm showroom, spa: 35 triệu/tháng.
+- Phương án 2: Thuê toàn bộ cả toà nhà: 80 triệu/tháng.
+Thanh toán 6 cọc 1, hợp đồng lâu dài.`,
+    expected: {
+      propertyCount: 1,
+      properties: [
+        {
+          addressContains: "Nguyễn Thị Định",
+          floor_area_m2: "90",
+          total_lease_area_m2: 630,
+          price_amount: 80000000,
+          price_period: "Theo tháng",
+          requiredKeywordsInViSummary: ["35", "80"],
+        },
+      ],
+    },
+  },
+  {
+    id: "HARD_8",
+    name: "Đất công nghiệp/kho bãi không chia tầng (2000m2 giá 45k/m2/tháng)",
+    description: "Đất không có tầng -> floor_area_m2 = null, price_basis: per_m2, price_amount: 45000",
+    rawText: `Chính chủ cho thuê 2000m2 đất công nghiệp tại cụm CN Ngọc Hồi, Thanh Trì. Đã quây tôn, đường xe cont tránh nhau, điện 3 pha, nước sạch. HĐ ký 5 năm. Giá 45k/m2/tháng.`,
+    expected: {
+      propertyCount: 1,
+      properties: [
+        {
+          addressContains: "Ngọc Hồi",
+          total_lease_area_m2: 2000,
+          floor_area_m2: null,
+          price_amount: 45000,
+          price_basis: "per_m2",
+          price_period: "Theo tháng",
+        },
+      ],
+    },
+  },
+  {
+    id: "HARD_9",
+    name: "Tiếng lóng môi giới cực gắt: '55 củ/tháng', '70mx5t', 'tm', 'hh 1 tháng bên mình 50%'",
+    description: "55 củ = 55 triệu, tm = thang máy, our_share_percent = 50",
+    rawText: `mp Kim Mã 70mx5t mt 4.8m tm thông sàn, nội thất cơ bản: ac nóng lạnh, vỉa hè rộng đỗ 2 oto. Giá 55 củ/tháng. Hh 1 tháng bên mình 50%. Lh 0912345678`,
+    expected: {
+      propertyCount: 1,
+      properties: [
+        {
+          addressContains: "Kim Mã",
+          floor_area_m2: "70",
+          total_lease_area_m2: 350,
+          price_amount: 55000000,
+          price_period: "Theo tháng",
+          our_share_percent: 50,
+        },
+      ],
+    },
+  },
+  {
+    id: "HARD_10",
+    name: "Nhà phố kết cấu 1 hầm + 6 tầng nổi + 1 tum",
+    description: "Nhận diện diện tích sàn 85m2, không bị nhầm lẫn hầm tum",
+    rawText: `Cho thuê nhà phố Trần Đại Nghĩa, Hai Bà Trưng.
+- Kết cấu: 1 hầm + 6 tầng nổi + 1 tum.
+- DT sàn: 85m2.
+- Mỗi tầng thông sàn, có thang máy.
+- Giá thuê 65tr/tháng. Hợp đồng 3 năm.`,
+    expected: {
+      propertyCount: 1,
+      properties: [
+        {
+          addressContains: "Trần Đại Nghĩa",
+          floor_area_m2: "85",
+          price_amount: 65000000,
+          price_period: "Theo tháng",
+        },
+      ],
+    },
+  },
+  {
+    id: "HARD_11",
+    name: "Sang nhượng cửa hàng: Phân biệt tiền thuê nhà vs Tiền sang nhượng đồ đạc",
+    description: "Tiền thuê 25tr/tháng, phí nhượng 70tr -> price_amount: 25000000 (KHÔNG PHẢI 70TR!)",
+    rawText: `Nhượng lại cửa hàng thời trang mặt phố Chùa Bộc, Đống Đa. DT 50m2 tầng 1 thông sàn. Tiền thuê nhà: 25 triệu/tháng, hợp đồng còn 2 năm. Giá sang nhượng toàn bộ đồ đạc biển bảng, điều hòa, quầy thu ngân: 70 triệu (có thương lượng).`,
+    expected: {
+      propertyCount: 1,
+      properties: [
+        {
+          addressContains: "Chùa Bộc",
+          total_lease_area_m2: 50,
+          price_amount: 25000000,
+          price_period: "Theo tháng",
+          requiredKeywordsInViSummary: ["70"],
+        },
+      ],
+    },
+  },
+  {
+    id: "HARD_12",
+    name: "Dòng thời gian có tin nhắn đính chính / giảm giá gửi sau",
+    description: "Msg 1: 18tr -> Msg 2 (15 phút sau): chủ nhà giảm còn 16.5tr -> Phải lấy 16.5tr",
+    timeline: [
+      {
+        msg_id: "msg_12_a",
+        time: Date.now() - 900000,
+        sent_time: "10:00",
+        type: "text",
+        text: `Cho thuê nhà 50m2 x 4 tầng ngõ 106 Hoàng Quốc Việt, Cầu Giấy, giá 18tr/tháng.`,
+      },
+      {
+        msg_id: "msg_12_b",
+        time: Date.now(),
+        sent_time: "10:15",
+        type: "text",
+        text: `Căn ngõ 106 Hoàng Quốc Việt chủ nhà vừa báo giảm giá còn 16.5tr/tháng nhé cả nhà.`,
+      },
+    ],
+    expected: {
+      propertyCount: 1,
+      properties: [
+        {
+          addressContains: "Hoàng Quốc Việt",
+          floor_area_m2: "50",
+          total_lease_area_m2: 200,
+          price_amount: 16500000,
+          price_period: "Theo tháng",
+        },
+      ],
+    },
+  },
 ];
 
 async function runHardExtractionTests() {
@@ -207,7 +349,7 @@ async function runHardExtractionTests() {
     console.log(`------------------------------------------------------------------`);
 
     try {
-      const timeline = [
+      const timeline = sc.timeline || [
         {
           msg_id: `msg_${sc.id}`,
           time: Date.now(),
@@ -280,6 +422,12 @@ async function runHardExtractionTests() {
           if (expP.price_period !== undefined) {
             if (actP.price_period !== expP.price_period) {
               errors.push(`Căn ${pIdx + 1}: price_period lệch (Nhận: ${actP.price_period}, Kỳ vọng: ${expP.price_period})`);
+            }
+          }
+
+          if (expP.our_share_percent !== undefined) {
+            if (Number(actP.our_share_percent) !== Number(expP.our_share_percent)) {
+              errors.push(`Căn ${pIdx + 1}: our_share_percent lệch (Nhận: ${actP.our_share_percent}, Kỳ vọng: ${expP.our_share_percent})`);
             }
           }
 

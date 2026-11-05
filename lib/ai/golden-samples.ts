@@ -482,17 +482,29 @@ export function extractMultiFloorAreas(
 ): { floorAreaStr: string; totalArea: number } | null {
   if (!text) return null;
 
-  // 1. Regex nhận diện các tầng cụ thể: "Tầng 1: 50m, Tầng 2: 70m"
-  const floorRegex = /(?:tầng|t)\s*(\d+)[\s:là-]+(\d+(?:[.,]\d+)?)\s*m(?:2|²)?/gi;
+  // 1. Regex nhận diện các tầng cụ thể: "Tầng 1: 50m, Tầng 2: 70m" hoặc "Tầng 2, 3, 4: mỗi tầng 100m2"
+  const floorRegex = /(?:tầng|t)\s*(\d+(?:[\s,và-]+\d+)*)[\s:là-]+(?:mỗi\s*(?:tầng|sàn)\s*)?(\d+(?:[.,]\d+)?)\s*m(?:2|²)?/gi;
   const matches = [...text.matchAll(floorRegex)];
 
-  if (matches.length >= 2) {
+  if (matches.length >= 1) {
     const floorMap = new Map<number, string>();
     for (const m of matches) {
-      const fNum = parseInt(m[1], 10);
+      const floorSpec = m[1];
       const val = m[2].replace(",", ".");
-      if (!floorMap.has(fNum) && fNum > 0 && fNum <= 100) {
-        floorMap.set(fNum, val);
+      if (floorSpec.includes("-")) {
+        const [startF, endF] = floorSpec.split("-").map((s) => parseInt(s.trim(), 10));
+        if (startF > 0 && endF >= startF && endF <= 100) {
+          for (let f = startF; f <= endF; f++) {
+            floorMap.set(f, val);
+          }
+        }
+      } else {
+        const fNums = floorSpec.split(/[,và\s]+/).map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n));
+        for (const fNum of fNums) {
+          if (fNum > 0 && fNum <= 100) {
+            floorMap.set(fNum, val);
+          }
+        }
       }
     }
 
@@ -604,13 +616,26 @@ export function auditAndVerifyExtractedProperty(
 
   // 2. Kiểm toán Diện tích mỗi tầng (Floor-Area Integrity Audit)
   if (text.length > 0) {
-    const hasFloorMention = /(?:\d+\s*(?:tầng|t\b|lầu|sàn)|mỗi\s*(?:tầng|sàn)|tầng\s*\d+|sàn\s*\d+|[x×*]\s*\d+\s*(?:tầng|t\b))/i.test(lowerText);
+    const hasMultiFloors = /(?:\d+\s*(?:tầng|t\b|lầu)|mỗi\s*(?:tầng|sàn)|tầng\s*\d+|[x×*]\s*\d+\s*(?:tầng|t\b))/i.test(lowerText);
+    const isSingleLevel = /(?:chung\s*cư|căn\s*hộ|kho\s*xưởng|đất)/i.test(lowerText) && !/(?:duplex|penthouse|nhiều\s*tầng|\d+\s*tầng)/i.test(lowerText);
 
-    if (!hasFloorMention && prop.floor_area_m2) {
-      // Chỉ reset nếu tin nhắn hoàn toàn không có yếu tố tầng hoặc sàn nào
-      if (!/(?:chung\s*cư|căn\s*hộ|kho\s*xưởng|mặt\s*bằng|đất)/i.test(lowerText)) {
-        prop.floor_area_m2 = null;
-        audit_notes.push(`Reset floor_area_m2 về null vì không tìm thấy tầng/sàn`);
+    if (isSingleLevel || (!hasMultiFloors && prop.floor_area_m2)) {
+      prop.floor_area_m2 = null;
+      audit_notes.push(`Reset floor_area_m2 về null vì là mặt phẳng đơn không chia tầng`);
+    }
+
+    // Kiểm toán số học diện tích: Nếu floor_area_m2 là danh sách diện tích các tầng (cách nhau bởi dấu phẩy)
+    if (prop.floor_area_m2 && String(prop.floor_area_m2).includes(",")) {
+      const floorNums = String(prop.floor_area_m2)
+        .split(",")
+        .map((s) => parseFloat(s.trim()))
+        .filter((n) => !isNaN(n) && n > 0);
+      if (floorNums.length >= 2) {
+        const exactSum = Math.round(floorNums.reduce((a, b) => a + b, 0) * 100) / 100;
+        if (exactSum > 0 && Math.abs((Number(prop.total_lease_area_m2) || 0) - exactSum) > 1) {
+          prop.total_lease_area_m2 = exactSum;
+          audit_notes.push(`Hiệu chỉnh tổng diện tích theo tổng số học các tầng: ${exactSum}m²`);
+        }
       }
     }
   }
