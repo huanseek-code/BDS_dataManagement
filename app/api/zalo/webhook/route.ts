@@ -143,15 +143,13 @@ export async function POST(req: NextRequest) {
 
       const subId = (ingestResult as any)?.submission_id;
 
-      // Gia hạn Cửa sổ gom tin văn bản (Debounce Window 25 giây) cho đợt gửi này
+      // Gia hạn Cửa sổ gom tin văn bản (Debounce Window 10 giây) cho đợt gửi này
       if (subId) {
-        const debouncedCloseAt = new Date(Date.now() + 25 * 1000).toISOString();
+        const debouncedCloseAt = new Date(Date.now() + 10 * 1000).toISOString();
         await supabaseAdmin
           .from("submissions")
           .update({
             close_at: debouncedCloseAt,
-            // Giữ status là 'collecting' để nếu đối tác gửi dồn nhiều tin trong 25s,
-            // Postgres ingest_zalo_message sẽ gom chung vào submission này thay vì phân mảnh
             ai_status: "pending",
             updated_at: new Date().toISOString(),
           })
@@ -176,9 +174,9 @@ export async function POST(req: NextRequest) {
             );
           }
 
-          // 2. Chờ 25 giây gom tin nhắn liên tiếp và tự động bóc tách (await Promise đảm bảo Serverless không bị freeze)
+          // 2. Chờ 10 giây gom tin nhắn liên tiếp và tự động bóc tách
           if (subId) {
-            await new Promise((resolve) => setTimeout(resolve, 25000));
+            await new Promise((resolve) => setTimeout(resolve, 10000));
             try {
               const sAdmin = createAdminClient();
               const { data: curSub } = await sAdmin
@@ -194,8 +192,8 @@ export async function POST(req: NextRequest) {
                 curSub.ai_status !== "processing"
               ) {
                 const closeAtMs = new Date(curSub.close_at).getTime();
-                // Chỉ kích hoạt nếu đã qua close_at (không có tin mới gửi thêm trong 25 giây)
-                if (Date.now() >= closeAtMs - 1500) {
+                // Chỉ kích hoạt nếu đã qua close_at (không có tin mới gửi thêm trong 10 giây)
+                if (Date.now() >= closeAtMs - 1000) {
                   const { data: locked } = await sAdmin
                     .from("submissions")
                     .update({ 
@@ -209,7 +207,7 @@ export async function POST(req: NextRequest) {
                     .maybeSingle();
 
                   if (locked) {
-                    console.log(`[Webhook Background Worker] Đã đủ 25s gom tin, bắt đầu bóc tách batch ${subId}...`);
+                    console.log(`[Webhook Background Worker] Đã đủ thời gian gom tin, bắt đầu bóc tách batch ${subId}...`);
                     await processBatchSubmission(subId);
                   }
                 }

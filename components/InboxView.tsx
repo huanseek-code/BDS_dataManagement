@@ -100,9 +100,14 @@ export function InboxView({
     };
   }, [router]);
 
-  // Kích hoạt quét ngầm các đợt gửi đang chờ xử lý (non-blocking)
+  // Tự động quét ngầm mỗi 4 giây để xử lý ngay các đợt gửi vừa qua thời gian gom tin (10s)
   useEffect(() => {
-    fetch("/api/inbox/process-batch", { method: "POST" }).catch(() => {});
+    const sweep = () => {
+      fetch("/api/inbox/process-batch", { method: "POST" }).catch(() => {});
+    };
+    sweep();
+    const interval = setInterval(sweep, 4000);
+    return () => clearInterval(interval);
   }, []);
 
   // Tự động kiểm tra BĐS trùng lặp tiềm năng (Duplicate Detection nâng cao)
@@ -149,8 +154,11 @@ export function InboxView({
     locale,
   ]);
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true);
+    try {
+      await fetch("/api/inbox/process-batch", { method: "POST" });
+    } catch {}
     router.refresh();
     setTimeout(() => setIsRefreshing(false), 800);
   };
