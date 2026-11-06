@@ -250,6 +250,8 @@ ${goldenSamplesText}
                     "price_currency",
                     "price_basis",
                     "key_details",
+                    "furniture_status",
+                    "furniture_list",
                   ],
                 },
               },
@@ -371,9 +373,79 @@ export function splitBatchTranscriptByProperties(
 }
 
 /**
+ * Trích xuất hiện trạng và danh sách nội thất tất định bằng biểu thức chính quy (Deterministic Furniture Extractor)
+ */
+export function extractFurnitureFallback(text: string): {
+  status: string | null;
+  list: string | null;
+} {
+  const lower = text.toLowerCase();
+  let status: string | null = null;
+  let list: string | null = null;
+
+  // 1. Nhận diện hiện trạng nội thất
+  if (
+    /full\s*(?:đồ|nội\s*thất|toàn\s*bộ)|đầy\s*đủ\s*nội\s*thất|nội\s*thất\s*:\s*full|\bfull\b|đủ\s*đồ/i.test(
+      lower
+    )
+  ) {
+    status = "full đồ";
+  } else if (/nội\s*thất\s*cơ\s*bản|đồ\s*cơ\s*bản|\bcơ\s*bản\b/i.test(lower)) {
+    status = "cơ bản";
+  } else if (/không\s*(?:có\s*)?đồ|nhà\s*trống|trống\s*đồ/i.test(lower)) {
+    status = "không nội thất";
+  } else if (/bàn\s*giao\s*thô|\bthô\b/i.test(lower)) {
+    status = "bàn giao thô";
+  }
+
+  // 2. Nhận diện danh sách món đồ
+  const listMatch = text.match(
+    /(?:nội\s*thất(?:\s*cơ\s*bản)?\s*[:\s-]|k\s*thiếu\s*gì\s*|gồm\s*[:\s-]|full\s*đồ\s*[:\s-]?\s*)([^\n]+)/i
+  );
+  if (listMatch) {
+    const rawList = listMatch[1].trim().replace(/^[;,\s:-]+|[;,\s.-]+$/g, "");
+    if (rawList && !/^(?:full|cơ bản|đủ đồ|vào luôn)$/i.test(rawList)) {
+      list = rawList;
+    }
+  }
+
+  if (!list) {
+    const itemsFound: string[] = [];
+    const itemPatterns = [
+      /(?:điều\s*hòa|điều\s*hoà|\bdh\b)/i,
+      /(?:nóng\s*lạnh|\bnl\b)/i,
+      /(?:máy\s*giặt|may\s*giặt)/i,
+      /(?:tủ\s*lạnh)/i,
+      /(?:thang\s*máy)/i,
+      /(?:giường)/i,
+      /(?:tủ\s*bếp|bếp)/i,
+      /(?:sofa|bàn\s*ghế)/i,
+    ];
+    for (const pat of itemPatterns) {
+      const m = text.match(pat);
+      if (m && !itemsFound.includes(m[0])) {
+        itemsFound.push(m[0]);
+      }
+    }
+    if (itemsFound.length > 0) {
+      list = itemsFound.join(", ");
+    }
+  }
+
+  return { status, list };
+}
+
+/**
  * Lớp bảo vệ hậu xử lý tất định cho từng căn trong Batch
  */
 function postProcessBatchListing(prop: any, snippetText: string): ExtractedProperty {
+  if (prop.source_text_snippet) {
+    prop.source_text_snippet = String(prop.source_text_snippet)
+      .replace(/\\r\\n/g, "\n")
+      .replace(/\\n/g, "\n")
+      .replace(/\\r/g, "");
+  }
+
   const text = `${prop.source_text_snippet || ""} ${snippetText || ""} ${prop.key_details?.vi || ""}`.trim();
 
   // 1. Phục hồi diện tích nếu floor_area_m2 hoặc total_lease_area_m2 rỗng
@@ -423,6 +495,18 @@ function postProcessBatchListing(prop: any, snippetText: string): ExtractedPrope
     }
   } else if (prop.price_amount > 0 && prop.price_amount < 1000 && prop.price_currency !== "USD") {
     prop.price_amount = Math.round(prop.price_amount * 1000000);
+  }
+
+  // 2b. Trích xuất nội thất tất định nếu AI chưa bóc tách đủ
+  if (!prop.furniture_status || String(prop.furniture_status).trim().toLowerCase() === "null") {
+    const furn = extractFurnitureFallback(text);
+    if (furn.status) {
+      prop.furniture_status = furn.status;
+      prop.handover_condition = furn.status;
+    }
+    if (!prop.furniture_list && furn.list) {
+      prop.furniture_list = furn.list;
+    }
   }
 
   // 3. Kiểm toán logic độc lập & xác minh bằng chứng (Grounding Auditor)

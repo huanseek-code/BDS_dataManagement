@@ -106,7 +106,7 @@ export function InboxView({
       fetch("/api/inbox/process-batch", { method: "POST" }).catch(() => {});
     };
     sweep();
-    const interval = setInterval(sweep, 4000);
+    const interval = setInterval(sweep, 12000);
     return () => clearInterval(interval);
   }, []);
 
@@ -163,6 +163,14 @@ export function InboxView({
     setTimeout(() => setIsRefreshing(false), 800);
   };
 
+  function cleanDisplayNewlines(val?: string | null): string {
+    if (!val) return "";
+    return String(val)
+      .replace(/\\r\\n/g, "\n")
+      .replace(/\\n/g, "\n")
+      .replace(/\\r/g, "");
+  }
+
   function getVerbatimFurnitureStatus(val?: string | null): string {
     if (!val) return "";
     const s = String(val).trim();
@@ -178,6 +186,60 @@ export function InboxView({
 
     const rawBasis = String(listing.price_basis || "").toLowerCase().trim();
     const isPerM2 = rawBasis === "per_m2" || rawBasis.includes("m2") || rawBasis.includes("m²");
+
+    // Trích xuất nội thất dự phòng nếu database chưa có sẵn
+    const rawSnippetForFurn = cleanDisplayNewlines(
+      listing.location_note || listing.ai_extracted?.source_text_snippet || listing.key_details?.vi || listing.submission?.raw_text || ""
+    );
+    let extractedStatus = getVerbatimFurnitureStatus(
+      listing.key_details?.furniture_status || listing.handover_condition || listing.ai_extracted?.furniture_status
+    );
+    let extractedList = listing.key_details?.furniture_list || listing.ai_extracted?.furniture_list || "";
+
+    if (!extractedStatus && rawSnippetForFurn) {
+      const lower = rawSnippetForFurn.toLowerCase();
+      if (/full\s*(?:đồ|nội\s*thất|toàn\s*bộ)|đầy\s*đủ\s*nội\s*thất|nội\s*thất\s*:\s*full|\bfull\b|đủ\s*đồ/i.test(lower)) {
+        extractedStatus = "full đồ";
+      } else if (/nội\s*thất\s*cơ\s*bản|đồ\s*cơ\s*bản|\bcơ\s*bản\b/i.test(lower)) {
+        extractedStatus = "cơ bản";
+      } else if (/không\s*(?:có\s*)?đồ|nhà\s*trống|trống\s*đồ/i.test(lower)) {
+        extractedStatus = "không nội thất";
+      } else if (/bàn\s*giao\s*thô|\bthô\b/i.test(lower)) {
+        extractedStatus = "bàn giao thô";
+      }
+    }
+
+    if (!extractedList && rawSnippetForFurn) {
+      const listMatch = rawSnippetForFurn.match(/(?:nội\s*thất(?:\s*cơ\s*bản)?\s*[:\s-]|k\s*thiếu\s*gì\s*|gồm\s*[:\s-]|full\s*đồ\s*[:\s-]?\s*)([^\n]+)/i);
+      if (listMatch) {
+        const rawL = listMatch[1].trim().replace(/^[;,\s:-]+|[;,\s.-]+$/g, "");
+        if (rawL && !/^(?:full|cơ bản|đủ đồ|vào luôn)$/i.test(rawL)) {
+          extractedList = rawL;
+        }
+      }
+      if (!extractedList) {
+        const itemsFound: string[] = [];
+        const itemPatterns = [
+          /(?:điều\s*hòa|điều\s*hoà|\bdh\b)/i,
+          /(?:nóng\s*lạnh|\bnl\b)/i,
+          /(?:máy\s*giặt|may\s*giặt)/i,
+          /(?:tủ\s*lạnh)/i,
+          /(?:thang\s*máy)/i,
+          /(?:giường)/i,
+          /(?:tủ\s*bếp|bếp)/i,
+          /(?:sofa|bàn\s*ghế)/i,
+        ];
+        for (const pat of itemPatterns) {
+          const m = rawSnippetForFurn.match(pat);
+          if (m && !itemsFound.includes(m[0])) {
+            itemsFound.push(m[0]);
+          }
+        }
+        if (itemsFound.length > 0) {
+          extractedList = itemsFound.join(", ");
+        }
+      }
+    }
 
     return {
       province: listing.province || "",
@@ -203,16 +265,9 @@ export function InboxView({
       price_text: listing.price_text || listing.ai_extracted?.price_text || "",
       landlord_commission_text: listing.landlord_commission_text || "",
       our_share_text: listing.our_share_text || "",
-      furniture_status: getVerbatimFurnitureStatus(
-        listing.key_details?.furniture_status || listing.handover_condition || listing.ai_extracted?.furniture_status
-      ),
-      furniture_list:
-        listing.key_details?.furniture_list ||
-        listing.ai_extracted?.furniture_list ||
-        "",
-      handover_condition: getVerbatimFurnitureStatus(
-        listing.key_details?.furniture_status || listing.handover_condition || listing.ai_extracted?.furniture_status
-      ),
+      furniture_status: extractedStatus,
+      furniture_list: extractedList,
+      handover_condition: extractedStatus,
       details_vi: listing.key_details?.vi || "",
       details_zh: listing.key_details?.zh || "",
       details_en: listing.key_details?.en || "",
@@ -642,19 +697,22 @@ export function InboxView({
                         <div className="text-[11px] font-bold text-slate-500 mb-2 pb-1 border-b border-slate-200">
                           {t("inbox.allChatTitle")} ({selectedListing.submission?.msg_count || 1} tin)
                         </div>
-                        {selectedListing.submission?.raw_text || "(Không có nội dung text)"}
+                        <div className="font-sans whitespace-pre-wrap leading-relaxed text-slate-800">
+                          {cleanDisplayNewlines(selectedListing.submission?.raw_text) || "(Không có nội dung text)"}
+                        </div>
                       </div>
                     ) : (
                       <div>
                         <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-sky-100 text-sky-700 mb-2">
                           <span>{t("inbox.thisSnippetBadge")}</span>
                         </div>
-                        <div className="text-slate-800">
-                          {selectedListing.ai_extracted?.source_text_snippet ||
+                        <div className="text-slate-800 font-sans whitespace-pre-wrap leading-relaxed text-xs">
+                          {cleanDisplayNewlines(
+                            selectedListing.ai_extracted?.source_text_snippet ||
                             selectedListing.location_note ||
                             selectedListing.change_history?.[0]?.text ||
-                            selectedListing.submission?.raw_text ||
-                            "(Không có nội dung text)"}
+                            selectedListing.submission?.raw_text
+                          ) || "(Không có nội dung text)"}
                         </div>
 
                         {Array.isArray(selectedListing.change_history) &&
@@ -666,14 +724,14 @@ export function InboxView({
                               {selectedListing.change_history.map((h: any, idx: number) => (
                                 <div
                                   key={idx}
-                                  className="p-2 rounded bg-white border border-slate-200 text-[11px] text-slate-600"
+                                  className="p-2 rounded bg-white border border-slate-200 text-[11px] text-slate-600 font-sans whitespace-pre-wrap leading-relaxed"
                                 >
-                                  <span className="text-[9px] text-slate-400 font-mono block">
+                                  <span className="text-[9px] text-slate-400 font-mono block mb-0.5">
                                     {h.created_at
                                       ? `${t("inbox.createdMsg")}: ${new Date(h.created_at).toLocaleTimeString("vi-VN")}`
                                       : `${t("inbox.appendedMsg")}: ${new Date(h.appended_at).toLocaleTimeString("vi-VN")}`}
                                   </span>
-                                  {h.text}
+                                  {cleanDisplayNewlines(h.text)}
                                 </div>
                               ))}
                             </div>
@@ -1047,8 +1105,8 @@ export function InboxView({
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-500 font-semibold block">Đoạn tin nhắn:</span>
-                  <div className="text-[11px] text-slate-600 bg-white p-2 rounded border border-sky-100 max-h-32 overflow-y-auto font-mono">
-                    {selectedListing.ai_extracted?.source_text_snippet || selectedListing.location_note || selectedListing.submission?.raw_text || "—"}
+                  <div className="text-[11px] text-slate-600 bg-white p-2 rounded border border-sky-100 max-h-32 overflow-y-auto font-sans whitespace-pre-wrap leading-relaxed">
+                    {cleanDisplayNewlines(selectedListing.ai_extracted?.source_text_snippet || selectedListing.location_note || selectedListing.submission?.raw_text || "—")}
                   </div>
                 </div>
               </div>
@@ -1065,8 +1123,8 @@ export function InboxView({
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-500 font-semibold block">Đoạn tin nhắn:</span>
-                  <div className="text-[11px] text-slate-600 bg-white p-2 rounded border border-amber-100 max-h-32 overflow-y-auto font-mono">
-                    {mergeModalSibling.ai_extracted?.source_text_snippet || mergeModalSibling.location_note || mergeModalSibling.submission?.raw_text || "—"}
+                  <div className="text-[11px] text-slate-600 bg-white p-2 rounded border border-amber-100 max-h-32 overflow-y-auto font-sans whitespace-pre-wrap leading-relaxed">
+                    {cleanDisplayNewlines(mergeModalSibling.ai_extracted?.source_text_snippet || mergeModalSibling.location_note || mergeModalSibling.submission?.raw_text || "—")}
                   </div>
                 </div>
               </div>

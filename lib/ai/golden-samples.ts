@@ -412,6 +412,22 @@ export function verifyVerbatimSpan(extractedPhrase: string | null | undefined, r
     return trimmed;
   }
 
+  // Nhận diện hiện trạng nội thất tương đương (full đồ, cơ bản, thô, không đồ)
+  const lower = trimmed.toLowerCase();
+  const rawLower = rawText.toLowerCase();
+  if (lower.includes("full") || lower.includes("đủ đồ") || lower.includes("đầy đủ")) {
+    if (/\b(?:full|đủ\s*đồ|đầy\s*đủ)\b/i.test(rawLower)) return trimmed;
+  }
+  if (lower.includes("cơ bản")) {
+    if (/cơ\s*bản/i.test(rawLower)) return trimmed;
+  }
+  if (lower.includes("thô")) {
+    if (/thô/i.test(rawLower)) return trimmed;
+  }
+  if (lower.includes("không") || lower.includes("trống")) {
+    if (/không\s*đồ|nhà\s*trống|trống\s*đồ/i.test(rawLower)) return trimmed;
+  }
+
   // Đây là chữ AI tự sáng tạo không có trong tin gốc -> Loại bỏ về null!
   return null;
 }

@@ -27,16 +27,25 @@ export async function processBatchSubmission(
     return { success: false, propertyCount: 0, message: "Không tìm thấy submission" };
   }
 
-  // Chống xử lý trùng lặp
+  // Chống xử lý trùng lặp bằng Atomic Lock
   if (submission.status === "done" && submission.ai_status === "done") {
     return { success: true, propertyCount: 0, message: "Submission đã được xử lý hoàn tất trước đó" };
   }
 
-  // Cập nhật trạng thái đang xử lý
-  await supabase
+  // Atomic lock: Chỉ nhận nếu chưa có tiến trình nào đang xử lý
+  const { data: lockedSub } = await supabase
     .from("submissions")
     .update({ ai_status: "processing", updated_at: new Date().toISOString() })
-    .eq("id", submissionId);
+    .eq("id", submissionId)
+    .neq("ai_status", "processing")
+    .neq("status", "done")
+    .select("id")
+    .maybeSingle();
+
+  if (!lockedSub) {
+    console.log(`[Batch Processor] Submission ${submissionId} đang được xử lý hoặc đã xong, bỏ qua để tránh trùng.`);
+    return { success: true, propertyCount: 0, message: "Submission đang được xử lý hoặc đã hoàn tất" };
+  }
 
   // 2. Tìm thông tin đối tác
   const { data: partner } = await supabase
@@ -152,6 +161,11 @@ export async function processBatchSubmission(
     // 7. Lưu từng căn BĐS độc lập vào property_listings (kho dữ liệu thuần text)
     if (batchResult.properties.length > 0) {
       for (const prop of batchResult.properties) {
+        const cleanSnippet = String(prop.source_text_snippet || submission.raw_text || "")
+          .replace(/\\r\\n/g, "\n")
+          .replace(/\\n/g, "\n")
+          .replace(/\\r/g, "");
+
         await supabase.from("property_listings").insert({
           submission_id: submissionId,
           partner_id: partner.id,
@@ -180,16 +194,19 @@ export async function processBatchSubmission(
           landlord_commission_text: prop.landlord_commission_text || null,
           our_share_percent: prop.our_share_percent || null,
           our_share_text: prop.our_share_text || null,
-          location_note: prop.source_text_snippet || submission.raw_text,
+          location_note: cleanSnippet,
           attachments: [], // Kho dữ liệu thuần text
           ai_extracted: prop as any,
-          change_history: [{ created_at: new Date().toISOString(), text: prop.source_text_snippet || "Bóc tách văn bản từ Zalo OA" }],
+          change_history: [{ created_at: new Date().toISOString(), text: cleanSnippet || "Bóc tách văn bản từ Zalo OA" }],
         });
         insertedCount++;
       }
     } else {
       // Trường hợp dự phòng nếu AI không phát hiện ra căn nào
-      const textOnly = deduplicatedTimeline.map((t) => t.text).join("\n\n");
+      const textOnly = deduplicatedTimeline.map((t) => t.text).join("\n\n")
+        .replace(/\\r\\n/g, "\n")
+        .replace(/\\n/g, "\n")
+        .replace(/\\r/g, "");
 
       await supabase.from("property_listings").insert({
         submission_id: submissionId,
