@@ -165,7 +165,7 @@
     "name": "Tên đối tác",
     "phone": "Số điện thoại",
     "zaloId": "Zalo User ID",
-    "totalSubmissions": "Tổng nguồn gửi",
+    "totalSubmissions": "Tổng căn đã duyệt",
     "firstSeen": "Lần đầu gửi tin",
     "lastSeen": "Gần nhất gửi tin",
     "notes": "Ghi chú",

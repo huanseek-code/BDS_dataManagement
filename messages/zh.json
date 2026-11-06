@@ -165,7 +165,7 @@
     "name": "合作伙伴名称",
     "phone": "联系电话",
     "zaloId": "Zalo 用户ID",
-    "totalSubmissions": "提供房源总数",
+    "totalSubmissions": "已审核入库房源数",
     "firstSeen": "首次提供时间",
     "lastSeen": "最近提供时间",
     "notes": "备注",
