@@ -131,7 +131,7 @@ export async function processBatchSubmission(
     if (deduplicatedTimeline.length === 0) {
       await supabase
         .from("submissions")
-        .update({ status: "done", ai_status: "done", ai_mode: "empty_text_batch" })
+        .update({ status: "done", ai_status: "done", ai_mode: "ai" })
         .eq("id", submissionId);
       return { success: true, propertyCount: 0, message: "Batch không có nội dung văn bản BĐS" };
     }
@@ -214,7 +214,7 @@ export async function processBatchSubmission(
       .update({
         status: "done",
         ai_status: "done",
-        ai_mode: "batch_reconciled",
+        ai_mode: "ai",
         ai_model: process.env.GEMINI_MODEL || "gemini-flash-latest",
         updated_at: new Date().toISOString(),
       })
