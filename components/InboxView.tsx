@@ -755,22 +755,6 @@ export function InboxView({
                       />
                     </div>
 
-                    {/* Tỉnh / TP (Không bắt buộc) */}
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="text-[11px] font-semibold text-slate-600 block">
-                          {t("inbox.province")}
-                        </label>
-                      </div>
-                      <input
-                        type="text"
-                        value={formState.province}
-                        onChange={(e) => setFormState({ ...formState, province: e.target.value })}
-                        placeholder="Để trống nếu không rõ..."
-                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-sky-500 font-medium text-slate-800"
-                      />
-                    </div>
-
                     {/* Địa chỉ / Vị trí */}
                     <div>
                       <label className="text-[11px] font-semibold text-slate-600 block mb-1">
@@ -1062,10 +1046,6 @@ export function InboxView({
                   <div className="font-semibold text-slate-800">{selectedListing.address_text || "—"}</div>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-500 font-semibold block">Tỉnh/TP:</span>
-                  <div className="font-medium text-slate-700">{selectedListing.province || "—"}</div>
-                </div>
-                <div>
                   <span className="text-[10px] text-slate-500 font-semibold block">Đoạn tin nhắn:</span>
                   <div className="text-[11px] text-slate-600 bg-white p-2 rounded border border-sky-100 max-h-32 overflow-y-auto font-mono">
                     {selectedListing.ai_extracted?.source_text_snippet || selectedListing.location_note || selectedListing.submission?.raw_text || "—"}
@@ -1082,10 +1062,6 @@ export function InboxView({
                 <div>
                   <span className="text-[10px] text-slate-500 font-semibold block">Địa chỉ:</span>
                   <div className="font-semibold text-slate-800">{mergeModalSibling.address_text || "—"}</div>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-500 font-semibold block">Tỉnh/TP:</span>
-                  <div className="font-medium text-slate-700">{mergeModalSibling.province || "—"}</div>
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-500 font-semibold block">Đoạn tin nhắn:</span>
