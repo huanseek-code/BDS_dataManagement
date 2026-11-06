@@ -100,6 +100,11 @@ export function InboxView({
     };
   }, [router]);
 
+  // Kích hoạt quét ngầm các đợt gửi đang chờ xử lý (non-blocking)
+  useEffect(() => {
+    fetch("/api/inbox/process-batch", { method: "POST" }).catch(() => {});
+  }, []);
+
   // Tự động kiểm tra BĐS trùng lặp tiềm năng (Duplicate Detection nâng cao)
   const duplicateCandidate = useMemo(() => {
     if (!selectedListing || !formState?.address_text) return null;

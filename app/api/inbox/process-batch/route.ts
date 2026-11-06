@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
       const body = await req.json();
       submissionId = body?.submissionId || null;
     } catch {
-      // Body rỗng -> xử lý tất cả submissions đang queued
+      // Body rỗng -> xử lý các submissions hợp lệ đang chờ
     }
 
     const supabase = createAdminClient();
@@ -20,13 +20,27 @@ export async function POST(req: NextRequest) {
     if (submissionId) {
       targetIds = [submissionId];
     } else {
+      const nowIso = new Date().toISOString();
       const { data: queuedSubs } = await supabase
         .from("submissions")
-        .select("id")
-        .eq("status", "queued")
+        .select("id, ai_status, updated_at")
+        .in("status", ["queued", "collecting"])
+        .neq("ai_status", "done")
+        .lte("close_at", nowIso)
         .order("created_at", { ascending: false })
-        .limit(10);
-      targetIds = (queuedSubs || []).map((s) => s.id);
+        .limit(5);
+
+      targetIds = (queuedSubs || [])
+        .filter((sub) => {
+          if (sub.ai_status === "processing") {
+            const isStuck =
+              !sub.updated_at ||
+              new Date(sub.updated_at).getTime() < Date.now() - 2 * 60 * 1000;
+            return isStuck;
+          }
+          return true;
+        })
+        .map((s) => s.id);
     }
 
     if (targetIds.length === 0) {

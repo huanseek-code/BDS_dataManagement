@@ -130,6 +130,13 @@ export async function processBatchSubmission(
 
     let insertedCount = 0;
 
+    // Xoá các bản nháp cũ của submission này (nếu có do retry) để đảm bảo không bị nhân bản trùng
+    await supabase
+      .from("property_listings")
+      .delete()
+      .eq("submission_id", submissionId)
+      .eq("review_status", "pending");
+
     // 7. Lưu từng căn BĐS độc lập vào property_listings (kho dữ liệu thuần text)
     if (batchResult.properties.length > 0) {
       for (const prop of batchResult.properties) {
