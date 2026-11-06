@@ -37,7 +37,8 @@ export async function proxy(request: NextRequest) {
   const isLoginPage = pathname === "/login";
   const isPublicApi =
     pathname.startsWith("/api/zalo/") ||
-    pathname.startsWith("/api/cron/tick");
+    pathname.startsWith("/api/cron/tick") ||
+    pathname.startsWith("/api/inbox/process-batch");
 
   const isZaloVerify =
     pathname.startsWith("/zalo_verifier") || pathname.endsWith(".html");

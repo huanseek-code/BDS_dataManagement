@@ -102,6 +102,18 @@ export async function processBatchSubmission(
       }
     }
 
+    // 5c. Dự phòng: Nếu timelineItems rỗng nhưng submission.raw_text có nội dung thì lấy trực tiếp từ raw_text
+    if (timelineItems.length === 0 && submission.raw_text && submission.raw_text.trim().length > 0) {
+      const subTime = submission.first_msg_at ? new Date(submission.first_msg_at).getTime() : Date.now();
+      timelineItems.push({
+        msg_id: `raw_${submission.id}`,
+        time: subTime,
+        sent_time: new Date(subTime).toLocaleTimeString("vi-VN"),
+        type: "text",
+        text: submission.raw_text,
+      });
+    }
+
     // Sắp xếp lại toàn bộ dòng thời gian chuẩn theo thời điểm gửi (tăng dần)
     timelineItems.sort((a, b) => a.time - b.time);
 
