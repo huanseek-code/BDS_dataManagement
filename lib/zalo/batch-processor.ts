@@ -27,25 +27,26 @@ export async function processBatchSubmission(
     return { success: false, propertyCount: 0, message: "Không tìm thấy submission" };
   }
 
-  // Chống xử lý trùng lặp bằng Atomic Lock
+  // Chống xử lý trùng lặp nếu submission đã hoàn tất
   if (submission.status === "done" && submission.ai_status === "done") {
     return { success: true, propertyCount: 0, message: "Submission đã được xử lý hoàn tất trước đó" };
   }
 
-  // Atomic lock: Chỉ nhận nếu chưa có tiến trình nào đang xử lý
-  const { data: lockedSub } = await supabase
+  // Nếu đang được xử lý và chưa bị treo quá 2 phút -> Bỏ qua để tránh xung đột
+  if (
+    submission.ai_status === "processing" &&
+    submission.updated_at &&
+    new Date(submission.updated_at).getTime() > Date.now() - 2 * 60 * 1000
+  ) {
+    console.log(`[Batch Processor] Submission ${submissionId} đang được xử lý bởi tiến trình khác, bỏ qua.`);
+    return { success: true, propertyCount: 0, message: "Submission đang được xử lý bởi tiến trình khác" };
+  }
+
+  // Đánh dấu trạng thái đang xử lý
+  await supabase
     .from("submissions")
     .update({ ai_status: "processing", updated_at: new Date().toISOString() })
-    .eq("id", submissionId)
-    .neq("ai_status", "processing")
-    .neq("status", "done")
-    .select("id")
-    .maybeSingle();
-
-  if (!lockedSub) {
-    console.log(`[Batch Processor] Submission ${submissionId} đang được xử lý hoặc đã xong, bỏ qua để tránh trùng.`);
-    return { success: true, propertyCount: 0, message: "Submission đang được xử lý hoặc đã hoàn tất" };
-  }
+    .eq("id", submissionId);
 
   // 2. Tìm thông tin đối tác
   const { data: partner } = await supabase

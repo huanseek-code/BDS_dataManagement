@@ -194,22 +194,8 @@ export async function POST(req: NextRequest) {
                 const closeAtMs = new Date(curSub.close_at).getTime();
                 // Chỉ kích hoạt nếu đã qua close_at (không có tin mới gửi thêm trong 10 giây)
                 if (Date.now() >= closeAtMs - 1000) {
-                  const { data: locked } = await sAdmin
-                    .from("submissions")
-                    .update({ 
-                      status: "queued",
-                      ai_status: "processing", 
-                      updated_at: new Date().toISOString() 
-                    })
-                    .eq("id", subId)
-                    .neq("ai_status", "processing")
-                    .select("id")
-                    .maybeSingle();
-
-                  if (locked) {
-                    console.log(`[Webhook Background Worker] Đã đủ thời gian gom tin, bắt đầu bóc tách batch ${subId}...`);
-                    await processBatchSubmission(subId);
-                  }
+                  console.log(`[Webhook Background Worker] Đã đủ thời gian gom tin, kích hoạt bóc tách batch ${subId}...`);
+                  await processBatchSubmission(subId);
                 }
               }
             } catch (timerErr) {
