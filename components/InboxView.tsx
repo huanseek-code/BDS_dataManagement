@@ -106,7 +106,7 @@ export function InboxView({
       fetch("/api/inbox/process-batch", { method: "POST" }).catch(() => {});
     };
     sweep();
-    const interval = setInterval(sweep, 12000);
+    const interval = setInterval(sweep, 5000);
     return () => clearInterval(interval);
   }, []);
 

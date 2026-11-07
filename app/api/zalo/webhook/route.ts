@@ -143,9 +143,9 @@ export async function POST(req: NextRequest) {
 
       const subId = (ingestResult as any)?.submission_id;
 
-      // Gia hạn Cửa sổ gom tin văn bản (Debounce Window 10 giây) cho đợt gửi này
+      // Gia hạn Cửa sổ gom tin văn bản (Debounce Window 8 giây) cho đợt gửi này
       if (subId) {
-        const debouncedCloseAt = new Date(Date.now() + 10 * 1000).toISOString();
+        const debouncedCloseAt = new Date(Date.now() + 8 * 1000).toISOString();
         await supabaseAdmin
           .from("submissions")
           .update({
@@ -174,9 +174,9 @@ export async function POST(req: NextRequest) {
             );
           }
 
-          // 2. Chờ 10 giây gom tin nhắn liên tiếp và tự động bóc tách
+          // 2. Chờ 9.5 giây (vừa đủ vượt qua debounce 8s) để tự động bóc tách
           if (subId) {
-            await new Promise((resolve) => setTimeout(resolve, 10000));
+            await new Promise((resolve) => setTimeout(resolve, 9500));
             try {
               const sAdmin = createAdminClient();
               const { data: curSub } = await sAdmin
@@ -192,9 +192,9 @@ export async function POST(req: NextRequest) {
                 curSub.ai_status !== "processing"
               ) {
                 const closeAtMs = new Date(curSub.close_at).getTime();
-                // Chỉ kích hoạt nếu đã qua close_at (không có tin mới gửi thêm trong 10 giây)
+                // Chỉ kích hoạt nếu đã qua close_at (không có tin mới gửi thêm)
                 if (Date.now() >= closeAtMs - 1000) {
-                  console.log(`[Webhook Background Worker] Đã đủ thời gian gom tin, kích hoạt bóc tách batch ${subId}...`);
+                  console.log(`[Webhook Background Worker] Đã đủ thời gian gom tin (8s), kích hoạt bóc tách batch ${subId}...`);
                   await processBatchSubmission(subId);
                 }
               }

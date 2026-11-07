@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
           if (sub.ai_status === "processing") {
             const isStuck =
               !sub.updated_at ||
-              new Date(sub.updated_at).getTime() < Date.now() - 2 * 60 * 1000;
+              new Date(sub.updated_at).getTime() < Date.now() - 30 * 1000;
             return isStuck;
           }
           return true;
