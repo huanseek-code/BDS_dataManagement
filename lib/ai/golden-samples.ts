@@ -499,7 +499,7 @@ export function extractMultiFloorAreas(
   if (!text) return null;
 
   // 1. Regex nhận diện các tầng cụ thể: "Tầng 1: 50m, Tầng 2: 70m" hoặc "Tầng 2, 3, 4: mỗi tầng 100m2"
-  const floorRegex = /(?:tầng|t)\s*(\d+(?:[\s,và-]+\d+)*)[\s:là-]+(?:mỗi\s*(?:tầng|sàn)\s*)?(\d+(?:[.,]\d+)?)\s*m(?:2|²)?/gi;
+  const floorRegex = /(?:tầng|t)\s*(\d+(?:[\s,và-]+\d+)*)[\s:là-]+(?:diện\s*tích\s*[:\s-]*)?(?:mỗi\s*(?:tầng|sàn)\s*)?(\d+(?:[.,]\d+)?)\s*(?:m(?:2|²|ét(?:\s*vuông)?)?|sqm)/gi;
   const matches = [...text.matchAll(floorRegex)];
 
   if (matches.length >= 1) {
@@ -719,4 +719,255 @@ export function auditAndVerifyExtractedProperty(
 
   return { prop, audit };
 }
+
+/**
+ * Bóc tách giá tiền tất định dự phòng (Deterministic Price Extractor Fallback)
+ * Hỗ trợ mọi biến thể thực tế: "Giá_Thuê: 22 triệu/tháng", "Giá: 8tr2", "130k/m", "60k/1m", "20tr", "$750"...
+ * Đồng thời quét tóm tắt Tiếng Việt (key_details.vi) nếu Gemini đã ghi giá vào tóm tắt nhưng bỏ sót trường số.
+ */
+export function extractPriceFallback(
+  text: string,
+  currentViSummary?: string | null
+): {
+  amount: number | null;
+  currency: string;
+  basis: string;
+  period: string | null;
+  textSnippet: string | null;
+} | null {
+  if (!text && !currentViSummary) return null;
+
+  // 1. Phục hồi từ tóm tắt Tiếng Việt nếu đã có tóm tắt ghi giá rõ ràng
+  if (currentViSummary) {
+    const viMatch = currentViSummary.match(
+      /(?:giá(?: thuê)?|thuê|chào)\s*[:\s]*(\d+(?:[.,]\d+)?)\s*(triệu|trieu|tr|củ|tỷ|usd|\$)(?:\s*\/\s*(tháng|thang|th|năm|nam))?/i
+    );
+    if (viMatch) {
+      const num = parseFloat(viMatch[1].replace(",", "."));
+      const unit = viMatch[2].toLowerCase();
+      const periodWord = viMatch[3]?.toLowerCase();
+      let amount: number | null = null;
+      let currency = "VND";
+      let basis = "total";
+      let period: string | null = periodWord ? (periodWord.startsWith("n") ? "Theo năm" : "Theo tháng") : null;
+
+      if (unit.startsWith("tr") || unit === "củ") {
+        amount = Math.round(num * 1000000);
+      } else if (unit === "tỷ") {
+        amount = Math.round(num * 1000000000);
+      } else if (unit === "usd" || unit === "$") {
+        amount = num;
+        currency = "USD";
+      }
+
+      if (amount && amount > 0) {
+        return {
+          amount,
+          currency,
+          basis,
+          period,
+          textSnippet: `${viMatch[1]} ${viMatch[2]}${viMatch[3] ? "/" + viMatch[3] : ""}`,
+        };
+      }
+    }
+  }
+
+  // 2. Mẫu có tiền tố rõ ràng (Giá_Thuê, Giá thuê, Giá chào, Giá: Full nt: 20tr...)
+  // Chú ý: [\s_]* hỗ trợ dấu gạch dưới như Giá_Thuê; [^\d\n]{0,25}? bỏ qua các từ xen giữa như "Full nt :"
+  const prefixMatch = text.match(
+    /(?:(?:giá|gia)[\s_]*(?:thuê|thue|chào|chao|bán|ban|net)?|thuê|thue|chào|chao|price)\s*[:\s=-]*([^\d\n]{0,25}?)(\d+(?:[.,]\d+)?)\s*(triệu(?:\/tháng|\/thang|\/th)?|trieu(?:\/tháng|\/thang|\/th)?|tr(?:\/tháng|\/thang|\/th)?|củ|tỷ|ty|\bk\b(?![a-zA-Zà-ỹÀ-Ỹ0-9])|usd|\$)/i
+  );
+  if (prefixMatch) {
+    const num = parseFloat(prefixMatch[2].replace(",", "."));
+    const rawUnit = prefixMatch[3].toLowerCase();
+    let amount: number | null = null;
+    let currency = "VND";
+    let basis = "total";
+    let period: string | null = null;
+
+    if (rawUnit.includes("/tháng") || rawUnit.includes("/thang") || rawUnit.includes("/th")) {
+      period = "Theo tháng";
+    }
+
+    if (rawUnit.startsWith("tr") || rawUnit.startsWith("củ")) {
+      amount = Math.round(num * 1000000);
+    } else if (rawUnit.startsWith("tỷ") || rawUnit.startsWith("ty")) {
+      amount = Math.round(num * 1000000000);
+    } else if (rawUnit === "usd" || rawUnit === "$") {
+      amount = num;
+      currency = "USD";
+    } else if (rawUnit === "k") {
+      amount = Math.round(num * 1000);
+      basis = "per_m2";
+    }
+
+    if (amount && amount > 0) {
+      return {
+        amount,
+        currency,
+        basis,
+        period,
+        textSnippet: `${prefixMatch[2]} ${prefixMatch[3]}`,
+      };
+    }
+  }
+
+  // 3. Mẫu viết tắt tiếng lóng thập phân: "8tr2" -> 8.2 triệu, "12tr5" -> 12.5 triệu
+  const decimalSlangMatch = text.match(/(?:giá[\s_]*(?:thuê)?\s*[:\s-]*)?(\d+)\s*(?:tr|củ)\s*(\d+)\b/i);
+  if (decimalSlangMatch) {
+    const major = parseInt(decimalSlangMatch[1], 10);
+    const minor = parseInt(decimalSlangMatch[2], 10);
+    const num = major + minor / Math.pow(10, String(minor).length);
+    return {
+      amount: Math.round(num * 1000000),
+      currency: "VND",
+      basis: "total",
+      period: null,
+      textSnippet: `${decimalSlangMatch[1]}tr${decimalSlangMatch[2]}`,
+    };
+  }
+
+  // 4. Mẫu đơn giá theo mét vuông: "130k/m", "60k/1m", "150k/m2", "85000đ/m2"
+  const perM2Match = text.match(
+    /(?:giá\s*[:\s-]*)?(\d+(?:[.,]\d+)?)\s*(?:k|đ|vnđ|nghìn)\s*\/\s*(?:1\s*)?(?:m2|m²|m|sàn)/i
+  );
+  if (perM2Match) {
+    const num = parseFloat(perM2Match[1].replace(",", "."));
+    const amount = num < 1000 ? Math.round(num * 1000) : Math.round(num);
+    return {
+      amount,
+      currency: "VND",
+      basis: "per_m2",
+      period: null,
+      textSnippet: perM2Match[0].trim(),
+    };
+  }
+
+  // 5. Mẫu số kèm đơn vị triệu/tháng không có tiền tố: "22 triệu/tháng", "16tr/tháng"
+  const standAloneMatch = text.match(
+    /(?:^|[^\wà-ỹ])(\d+(?:[.,]\d+)?)\s*(triệu|trieu|tr|củ)\s*(?:\/\s*(tháng|thang|th))?(?![a-zA-Zà-ỹÀ-Ỹ0-9])/i
+  );
+  if (standAloneMatch) {
+    const num = parseFloat(standAloneMatch[1].replace(",", "."));
+    const hasMonth = Boolean(standAloneMatch[3]);
+    return {
+      amount: Math.round(num * 1000000),
+      currency: "VND",
+      basis: "total",
+      period: hasMonth ? "Theo tháng" : null,
+      textSnippet: standAloneMatch[0].trim(),
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Trích xuất mục đích sử dụng / công năng phù hợp (Suitable for)
+ */
+export function extractSuitableFor(text: string): string | null {
+  if (!text) return null;
+  const match = text.match(
+    /(?:phù\s*hợp(?:\s*để|\s*cho|\s*làm)?|thích\s*hợp(?:\s*để|\s*cho|\s*làm)?|tiện(?:\s*làm|\s*kinh\s*doanh)?|mô\s*hình\s*[:\s-]*|công\s*năng\s*[:\s-]*)\s*[:\s-]*([^\n.]+)/i
+  );
+  if (match) {
+    let raw = match[1].trim();
+    raw = raw.replace(/^[-–—:.,\s]+|[-–—:.,\s]+$/g, "");
+    if (raw.endsWith(")")) raw = raw.slice(0, -1).trim();
+    if (raw.length >= 3 && !/^(?:nhé|nha|ạ|luôn)$/i.test(raw)) {
+      return raw;
+    }
+  }
+  return null;
+}
+
+/**
+ * Nhận diện kết cấu đặc biệt: Tầng hầm, Tầng lửng, Tầng tum
+ */
+export function extractSpecialStructureNotes(text: string): {
+  hasBasement: boolean;
+  basementText?: string;
+  hasMezzanine: boolean;
+  mezzanineText?: string;
+  hasTum: boolean;
+  tumText?: string;
+} {
+  const result: any = {
+    hasBasement: false,
+    hasMezzanine: false,
+    hasTum: false,
+  };
+  if (!text) return result;
+
+  // Hầm
+  const basementMatch = text.match(/(?:(\d+)\s*hầm|tầng\s*hầm|hầm\s*để\s*xe)/i);
+  if (basementMatch) {
+    result.hasBasement = true;
+    result.basementText = basementMatch[1] ? `${basementMatch[1]} tầng hầm` : "tầng hầm";
+  }
+
+  // Lửng
+  const mezzanineMatch = text.match(/(?:(\d+)\s*lửng|tầng\s*lửng)/i);
+  if (mezzanineMatch) {
+    result.hasMezzanine = true;
+    result.mezzanineText = mezzanineMatch[1] ? `${mezzanineMatch[1]} tầng lửng` : "tầng lửng";
+  }
+
+  // Tum
+  const tumMatch = text.match(/(?:tầng\s*tum(?:\s*sân\s*phơi)?|tum\s*sân\s*phơi|\btum\b)/i);
+  if (tumMatch) {
+    result.hasTum = true;
+    result.tumText = /sân\s*phơi/i.test(tumMatch[0]) ? "tầng tum sân phơi" : "tầng tum";
+  }
+
+  return result;
+}
+
+/**
+ * Làm giàu tóm tắt (key_details) với công năng phù hợp và ghi chú kết cấu
+ */
+export function enrichKeyDetailsWithStructureAndSuitability(
+  keyDetails: any,
+  text: string
+): any {
+  if (!keyDetails || typeof keyDetails !== "object") {
+    keyDetails = { vi: "", en: "", zh: "" };
+  }
+
+  const suitable = extractSuitableFor(text);
+  if (suitable) {
+    keyDetails.suitable_for = suitable;
+  }
+
+  const struct = extractSpecialStructureNotes(text);
+  let vi = keyDetails.vi || "";
+
+  // Bổ sung kết cấu tum nếu có trong text mà chưa có trong vi
+  if (struct.hasTum && struct.tumText && !/tum/i.test(vi)) {
+    vi = vi.replace(/\.*$/, "") + `, có ${struct.tumText}`;
+  }
+
+  // Bổ sung kết cấu hầm nếu có trong text mà chưa có trong vi
+  if (struct.hasBasement && struct.basementText && !/hầm/i.test(vi)) {
+    vi = vi.replace(/\.*$/, "") + `, có ${struct.basementText}`;
+  }
+
+  // Bổ sung kết cấu lửng nếu có trong text mà chưa có trong vi
+  if (struct.hasMezzanine && struct.mezzanineText && !/lửng/i.test(vi)) {
+    vi = vi.replace(/\.*$/, "") + `, có ${struct.mezzanineText}`;
+  }
+
+  // Bổ sung mục đích phù hợp nếu chưa có trong vi
+  if (suitable && !/phù\s*hợp/i.test(vi)) {
+    vi = vi.replace(/\.*$/, "") + `, phù hợp: ${suitable}`;
+  }
+
+  if (vi && !vi.endsWith(".")) {
+    vi += ".";
+  }
+
+  keyDetails.vi = vi;
+  return keyDetails;
+}
+
 

@@ -316,6 +316,7 @@ export function InboxView({
             price_text: formState.price_text || null,
             attachments: formState.attachments || [],
             key_details: {
+              ...(selectedListing?.key_details || {}),
               vi: formState.details_vi,
               zh: formState.details_zh,
               en: formState.details_en,

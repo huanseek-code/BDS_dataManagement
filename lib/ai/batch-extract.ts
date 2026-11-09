@@ -8,6 +8,10 @@ import {
   detectPricePeriod,
   extractMultiFloorAreas,
   auditAndVerifyExtractedProperty,
+  extractPriceFallback,
+  extractSuitableFor,
+  extractSpecialStructureNotes,
+  enrichKeyDetailsWithStructureAndSuitability,
 } from "./golden-samples";
 
 export interface BatchTimelineItem {
@@ -144,8 +148,18 @@ NGUYÊN TẮC CỐT LÕI - BÓC TÁCH NGUYÊN GỐC CHỮ TRONG TIN NHẮN (STRI
      * en: "... (no food & beverage / restaurant businesses allowed)"
      * zh: "... (房东禁止餐饮业)"
 
-8. TÓM TẮT 3 NGÔN NGỮ (key_details: vi, en, zh):
-   - vi: Tóm tắt đầy đủ, súc tích, trung thực 100% dựa vào các thông số có thật của căn đó.
+9. BẢO TOÀN KẾT CẤU ĐẶC BIỆT (TẦNG HẦM, TẦNG LỬNG, TẦNG TUM) & NGUYÊN TẮC ZERO EXTRAPOLATION:
+   - Nếu tin nhắn KHÔNG nêu rõ diện tích tổng có bao gồm tầng hầm hay không -> TUYỆT ĐỐI KHÔNG TỰ SUY ĐOÁN hay cộng gộp diện tích hầm vào "total_lease_area_m2".
+     * Ví dụ: "Nhà 8 tầng + 1 hầm, DT 90m2" -> total_lease_area_m2 = 8 * 90 = 720m2 (chỉ tính 8 tầng nổi), TUYỆT ĐỐI KHÔNG tự nhân 9 * 90 = 810m2.
+     * BẮT BUỘC giữ nguyên kết cấu trong tóm tắt "key_details.vi": "... gồm 8 tầng nổi + 1 tầng hầm".
+   - Tầng lửng và tầng tum: BẮT BUỘC ghi rõ trong tóm tắt "key_details.vi" (ví dụ: "... có tầng lửng", "... tầng tum sân phơi").
+
+10. CÔNG NĂNG & MỤC ĐÍCH SỬ DỤNG PHÙ HỢP (SUITABLE USES):
+   - Nếu tin nhắn có nhắc đến mục đích phù hợp (ví dụ: "phù hợp: văn phòng cty, spa, TT dạy học, phòng khám, kd online...", "kho phù hợp làm kho chứa hàng, sản xuất và logistics"):
+   - BẮT BUỘC PHẢI GIỮ LẠI trong tóm tắt "key_details.vi" (ví dụ: "... phù hợp văn phòng cty, spa, TT dạy học, phòng khám, kd online.") và điền vào "key_details.suitable_for".
+
+11. TÓM TẮT 3 NGÔN NGỮ (key_details: vi, en, zh):
+   - vi: Tóm tắt đầy đủ, súc tích, trung thực 100% dựa vào các thông số có thật của căn đó (kết cấu, hầm/lửng/tum, đồ đạc, công năng phù hợp, giá).
    - en & zh: Bản dịch tương ứng sát nghĩa và đầy đủ.
 
 ${goldenSamplesText}
@@ -247,8 +261,10 @@ ${goldenSamplesText}
                     "source_text_snippet",
                     "address_text",
                     "property_types",
+                    "price_amount",
                     "price_currency",
                     "price_basis",
+                    "price_text",
                     "key_details",
                     "furniture_status",
                     "furniture_list",
@@ -448,16 +464,14 @@ function postProcessBatchListing(prop: any, snippetText: string): ExtractedPrope
 
   const text = `${prop.source_text_snippet || ""} ${snippetText || ""} ${prop.key_details?.vi || ""}`.trim();
 
-  // 1. Phục hồi diện tích nếu floor_area_m2 hoặc total_lease_area_m2 rỗng
-  if (!prop.floor_area_m2 || !prop.total_lease_area_m2) {
-    const multiFloorAreas = extractMultiFloorAreas(text);
-    if (multiFloorAreas) {
-      if (!prop.floor_area_m2) {
-        prop.floor_area_m2 = multiFloorAreas.floorAreaStr;
-      }
-      if (!prop.total_lease_area_m2 || prop.total_lease_area_m2 <= 0) {
-        prop.total_lease_area_m2 = multiFloorAreas.totalArea;
-      }
+  // 1. Phục hồi và đồng bộ diện tích sàn đa tầng
+  const multiFloorAreas = extractMultiFloorAreas(text);
+  if (multiFloorAreas) {
+    if (!prop.floor_area_m2 || (multiFloorAreas.floorAreaStr.includes(",") && !String(prop.floor_area_m2).includes(","))) {
+      prop.floor_area_m2 = multiFloorAreas.floorAreaStr;
+    }
+    if (!prop.total_lease_area_m2 || prop.total_lease_area_m2 <= 0 || multiFloorAreas.floorAreaStr.includes(",")) {
+      prop.total_lease_area_m2 = multiFloorAreas.totalArea;
     }
   }
 
@@ -472,26 +486,15 @@ function postProcessBatchListing(prop: any, snippetText: string): ExtractedPrope
     }
   }
 
-  // 2. Fallback giá tiền nếu price_amount rỗng
+  // 2. Fallback giá tiền tất định nếu price_amount rỗng hoặc bằng 0
   if (!prop.price_amount || prop.price_amount <= 0) {
-    const priceMatch = text.match(/(?:giá(?: thuê)?|chào)?\s*[:\s]*(\d+(?:[.,]\d+)?)\s*(tr(?:iệu)?|củ|tỷ|k|usd|\$)/i);
-    if (priceMatch) {
-      const num = parseFloat(priceMatch[1].replace(",", "."));
-      const unit = priceMatch[2].toLowerCase();
-      if (unit.startsWith("tr") || unit === "củ") {
-        prop.price_amount = Math.round(num * 1000000);
-        prop.price_currency = "VND";
-        prop.price_basis = prop.price_basis || "total";
-        if (!prop.price_text) prop.price_text = `${priceMatch[1]} triệu/tháng`;
-      } else if (unit === "tỷ") {
-        prop.price_amount = Math.round(num * 1000000000);
-        prop.price_currency = "VND";
-        if (!prop.price_text) prop.price_text = `${priceMatch[1]} tỷ`;
-      } else if (unit === "usd" || unit === "$") {
-        prop.price_amount = num;
-        prop.price_currency = "USD";
-        if (!prop.price_text) prop.price_text = `${priceMatch[1]} USD`;
-      }
+    const priceFallback = extractPriceFallback(text, prop.key_details?.vi);
+    if (priceFallback && priceFallback.amount && priceFallback.amount > 0) {
+      prop.price_amount = priceFallback.amount;
+      prop.price_currency = priceFallback.currency || prop.price_currency || "VND";
+      prop.price_basis = priceFallback.basis || prop.price_basis || "total";
+      if (priceFallback.period) prop.price_period = priceFallback.period;
+      if (!prop.price_text && priceFallback.textSnippet) prop.price_text = priceFallback.textSnippet;
     }
   } else if (prop.price_amount > 0 && prop.price_amount < 1000 && prop.price_currency !== "USD") {
     prop.price_amount = Math.round(prop.price_amount * 1000000);
@@ -515,6 +518,7 @@ function postProcessBatchListing(prop: any, snippetText: string): ExtractedPrope
 
   if (prop.key_details) {
     prop.key_details.grounding_audit = audit;
+    prop.key_details = enrichKeyDetailsWithStructureAndSuitability(prop.key_details, text);
   }
 
   // 4. Kỳ hạn giá: Chỉ gán khi tin nhắn thực sự có từ ngữ chỉ kỳ hạn

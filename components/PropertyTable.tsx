@@ -470,6 +470,12 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
                             <span className="text-rose-500 text-[10px] italic">Chưa phân loại</span>
                           )}
                         </div>
+                        {row.key_details?.suitable_for && (
+                          <div className="text-[11px] text-sky-700 font-medium line-clamp-2 mt-1" title={row.key_details.suitable_for}>
+                            <span className="font-semibold text-slate-500">Phù hợp: </span>
+                            {row.key_details.suitable_for}
+                          </div>
+                        )}
                       </td>
 
                       {/* 4. Diện tích 1 tầng */}

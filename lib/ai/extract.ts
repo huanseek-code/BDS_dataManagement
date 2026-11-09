@@ -7,6 +7,10 @@ import {
   detectPricePeriod,
   extractMultiFloorAreas,
   auditAndVerifyExtractedProperty,
+  extractPriceFallback,
+  extractSuitableFor,
+  extractSpecialStructureNotes,
+  enrichKeyDetailsWithStructureAndSuitability,
 } from "./golden-samples";
 
 export interface ExtractedProperty {
@@ -394,7 +398,7 @@ ${rawText}`;
  * Ngăn chặn tuyệt đối tình trạng Gemini bỏ sót giá, bỏ sót diện tích hoặc quên điều kiện cấm.
  */
 function postProcessListing(prop: ExtractedProperty, fullText: string): ExtractedProperty {
-  const text = `${prop.source_text_snippet || ""} ${fullText || ""}`;
+  const text = `${prop.source_text_snippet || ""} ${fullText || ""}`.trim();
 
   // 1. Kiểm toán logic độc lập & xác minh bằng chứng (Grounding Auditor)
   const { prop: auditedProp, audit } = auditAndVerifyExtractedProperty(prop, text);
@@ -402,28 +406,18 @@ function postProcessListing(prop: ExtractedProperty, fullText: string): Extracte
 
   if (prop.key_details) {
     (prop.key_details as any).grounding_audit = audit;
+    prop.key_details = enrichKeyDetailsWithStructureAndSuitability(prop.key_details, text);
   }
 
-  // 2. Fallback giá tiền nếu price_amount bị null/0 mà trong văn bản có giá
+  // 2. Fallback giá tiền tất định nếu price_amount bị null/0 mà trong văn bản có giá
   if (!prop.price_amount || prop.price_amount <= 0) {
-    const priceMatch = text.match(/(?:giá(?: thuê)?|chào)?\s*[:\s]*(\d+(?:[.,]\d+)?)\s*(tr(?:iệu)?|củ|tỷ|k|usd|\$)/i);
-    if (priceMatch) {
-      const num = parseFloat(priceMatch[1].replace(",", "."));
-      const unit = priceMatch[2].toLowerCase();
-      if (unit.startsWith("tr") || unit === "củ") {
-        prop.price_amount = Math.round(num * 1000000);
-        prop.price_currency = "VND";
-        prop.price_basis = prop.price_basis || "total";
-        if (!prop.price_text) prop.price_text = `${priceMatch[1]} triệu`;
-      } else if (unit === "tỷ") {
-        prop.price_amount = Math.round(num * 1000000000);
-        prop.price_currency = "VND";
-        if (!prop.price_text) prop.price_text = `${priceMatch[1]} tỷ`;
-      } else if (unit === "usd" || unit === "$") {
-        prop.price_amount = num;
-        prop.price_currency = "USD";
-        if (!prop.price_text) prop.price_text = `${priceMatch[1]} USD`;
-      }
+    const priceFallback = extractPriceFallback(text, prop.key_details?.vi);
+    if (priceFallback && priceFallback.amount && priceFallback.amount > 0) {
+      prop.price_amount = priceFallback.amount;
+      prop.price_currency = priceFallback.currency || prop.price_currency || "VND";
+      prop.price_basis = priceFallback.basis || prop.price_basis || "total";
+      if (priceFallback.period) prop.price_period = priceFallback.period;
+      if (!prop.price_text && priceFallback.textSnippet) prop.price_text = priceFallback.textSnippet;
     }
   } else if (prop.price_amount > 0 && prop.price_amount < 1000 && prop.price_currency !== "USD") {
     prop.price_amount = Math.round(prop.price_amount * 1000000);
@@ -432,8 +426,10 @@ function postProcessListing(prop: ExtractedProperty, fullText: string): Extracte
   // 3. Fallback diện tích đa tầng & diện tích từng tầng
   const multiFloorAreas = extractMultiFloorAreas(text);
   if (multiFloorAreas) {
-    prop.floor_area_m2 = multiFloorAreas.floorAreaStr;
-    if (!prop.total_lease_area_m2 || prop.total_lease_area_m2 <= 0) {
+    if (!prop.floor_area_m2 || (multiFloorAreas.floorAreaStr.includes(",") && !String(prop.floor_area_m2).includes(","))) {
+      prop.floor_area_m2 = multiFloorAreas.floorAreaStr;
+    }
+    if (!prop.total_lease_area_m2 || prop.total_lease_area_m2 <= 0 || multiFloorAreas.floorAreaStr.includes(",")) {
       prop.total_lease_area_m2 = multiFloorAreas.totalArea;
     }
   }
