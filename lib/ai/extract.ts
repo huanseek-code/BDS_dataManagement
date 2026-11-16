@@ -8,9 +8,13 @@ import {
   extractMultiFloorAreas,
   auditAndVerifyExtractedProperty,
   extractPriceFallback,
+  extractFurnitureFallback,
+  extractLeaseTermFallback,
+  extractCommissionFallback,
   extractSuitableFor,
   extractSpecialStructureNotes,
   enrichKeyDetailsWithStructureAndSuitability,
+  normalizeVietnamesePropertyTypes,
 } from "./golden-samples";
 
 export interface ExtractedProperty {
@@ -400,7 +404,29 @@ ${rawText}`;
 function postProcessListing(prop: ExtractedProperty, fullText: string): ExtractedProperty {
   const text = `${prop.source_text_snippet || ""} ${fullText || ""}`.trim();
 
-  // 1. Kiểm toán logic độc lập & xác minh bằng chứng (Grounding Auditor)
+  // 1. Trích xuất nội thất, điều kiện thuê, hoa hồng tất định nếu AI chưa bóc tách đủ
+  const furn = extractFurnitureFallback(text);
+  if (!prop.furniture_status || String(prop.furniture_status).trim().toLowerCase() === "null") {
+    if (furn.status) {
+      prop.furniture_status = furn.status;
+      prop.handover_condition = furn.status;
+    }
+  }
+  if (!prop.furniture_list || String(prop.furniture_list).trim().toLowerCase() === "null") {
+    if (furn.list) {
+      prop.furniture_list = furn.list;
+    }
+  }
+  if (!prop.lease_term_text) {
+    const leaseTerm = extractLeaseTermFallback(text);
+    if (leaseTerm) prop.lease_term_text = leaseTerm;
+  }
+  if (!prop.landlord_commission_text) {
+    const comm = extractCommissionFallback(text);
+    if (comm) prop.landlord_commission_text = comm;
+  }
+
+  // 2. Kiểm toán logic độc lập & xác minh bằng chứng (Grounding Auditor)
   const { prop: auditedProp, audit } = auditAndVerifyExtractedProperty(prop, text);
   prop = auditedProp;
 
@@ -409,7 +435,7 @@ function postProcessListing(prop: ExtractedProperty, fullText: string): Extracte
     prop.key_details = enrichKeyDetailsWithStructureAndSuitability(prop.key_details, text);
   }
 
-  // 2. Fallback giá tiền tất định nếu price_amount bị null/0 mà trong văn bản có giá
+  // 3. Fallback giá tiền tất định nếu price_amount bị null/0 mà trong văn bản có giá
   if (!prop.price_amount || prop.price_amount <= 0) {
     const priceFallback = extractPriceFallback(text, prop.key_details?.vi);
     if (priceFallback && priceFallback.amount && priceFallback.amount > 0) {
@@ -423,7 +449,7 @@ function postProcessListing(prop: ExtractedProperty, fullText: string): Extracte
     prop.price_amount = Math.round(prop.price_amount * 1000000);
   }
 
-  // 3. Fallback diện tích đa tầng & diện tích từng tầng
+  // 4. Fallback diện tích đa tầng & diện tích từng tầng
   const multiFloorAreas = extractMultiFloorAreas(text);
   if (multiFloorAreas) {
     if (!prop.floor_area_m2 || (multiFloorAreas.floorAreaStr.includes(",") && !String(prop.floor_area_m2).includes(","))) {
@@ -434,7 +460,7 @@ function postProcessListing(prop: ExtractedProperty, fullText: string): Extracte
     }
   }
 
-  // 4. Kỳ hạn giá chuẩn xác
+  // 5. Kỳ hạn giá chuẩn xác
   const detectedPeriod = detectPricePeriod(prop.price_text, prop.source_text_snippet || text);
   if (detectedPeriod) {
     prop.price_period = detectedPeriod;
@@ -442,23 +468,8 @@ function postProcessListing(prop: ExtractedProperty, fullText: string): Extracte
     prop.price_period = null;
   }
 
-  // 5. Chuẩn hóa tiếng Việt cho Loại hình BĐS
-  const TYPE_MAP: Record<string, string> = {
-    townhouse: "Nhà phố",
-    apartment: "Chung cư",
-    villa: "Biệt thự",
-    warehouse: "Kho bãi",
-    factory: "Nhà xưởng",
-    office: "Văn phòng",
-    retail: "Mặt bằng",
-    land: "Đất",
-    hotel: "Khách sạn",
-  };
-  if (Array.isArray(prop.property_types)) {
-    prop.property_types = prop.property_types.map((t: string) => TYPE_MAP[t] || t);
-  } else if (typeof prop.property_types === "string") {
-    prop.property_types = [TYPE_MAP[prop.property_types] || prop.property_types];
-  }
+  // 6. Chuẩn hóa tiếng Việt cho Loại hình BĐS (bao gồm viết tắt CHCC, CHDV, MBKD, LK, VP, stu, duplex...)
+  prop.property_types = normalizeVietnamesePropertyTypes(prop.property_types, text);
 
   return prop;
 }

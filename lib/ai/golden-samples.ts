@@ -400,26 +400,48 @@ export function verifyVerbatimSpan(extractedPhrase: string | null | undefined, r
   const trimmed = extractedPhrase.trim();
   if (!trimmed || trimmed.toLowerCase() === "chưa rõ" || trimmed.toLowerCase() === "null") return null;
 
-  // Kiểm tra xem chuỗi có xuất hiện trong tin nhắn gốc không (bỏ qua hoa thường)
-  if (rawText.toLowerCase().includes(trimmed.toLowerCase())) {
-    return trimmed;
-  }
-
-  // Nếu không xuất hiện nguyên vẹn, kiểm tra xem có từng từ riêng lẻ có trong text không
-  // (ví dụ "Dh, nl, giường, bếp" từng item có trong text)
-  const items = trimmed.split(/[,;\n]+/).map(i => i.trim()).filter(Boolean);
-  if (items.length > 0 && items.every(i => rawText.toLowerCase().includes(i.toLowerCase()))) {
-    return trimmed;
-  }
-
-  // Nhận diện hiện trạng nội thất tương đương (full đồ, cơ bản, thô, không đồ)
   const lower = trimmed.toLowerCase();
   const rawLower = rawText.toLowerCase();
-  if (lower.includes("full") || lower.includes("đủ đồ") || lower.includes("đầy đủ")) {
-    if (/\b(?:full|đủ\s*đồ|đầy\s*đủ)\b/i.test(rawLower)) return trimmed;
+
+  // Kiểm tra xem chuỗi có xuất hiện trong tin nhắn gốc không (bỏ qua hoa thường)
+  if (rawLower.includes(lower)) {
+    return trimmed;
   }
-  if (lower.includes("cơ bản")) {
-    if (/cơ\s*bản/i.test(rawLower)) return trimmed;
+
+  // Bảng ánh xạ từ viết tắt thiết bị sang từ đầy đủ để xác thực hai chiều
+  const ABBR_ITEM_PAIRS: [RegExp, RegExp][] = [
+    [/điều\s*h[oò]a|\bđh\b|\bdh\b/i, /điều\s*h[oò]a|\bđh\b|\bdh\b/i],
+    [/nóng\s*lạnh|\bnl\b/i, /nóng\s*lạnh|\bnl\b/i],
+    [/tủ\s*lạnh|\btlạnh\b|\btlanh\b/i, /tủ\s*lạnh|\btlạnh\b|\btlanh\b/i],
+    [/bếp\s*từ|\bbtừ\b|\bbtu\b/i, /bếp\s*từ|\bbtừ\b|\bbtu\b/i],
+    [/máy\s*giặt|may\s*giặt|\bmgiặt\b|\bmgiat\b|giặt\s*sấy/i, /máy\s*giặt|may\s*giặt|\bmgiặt\b|\bmgiat\b|giặt\s*sấy/i],
+    [/giường\s*tủ|\bgtủ\b|\bgtu\b/i, /giường\s*tủ|\bgtủ\b|\bgtu\b|giường/i],
+    [/tivi|\btv\b|ti\s*vi/i, /tivi|\btv\b|ti\s*vi/i],
+    [/thang\s*máy|\btm\b/i, /thang\s*máy|\btm\b/i],
+  ];
+
+  // Nếu không xuất hiện nguyên vẹn, kiểm tra xem từng cụm từ riêng lẻ có trong text (hoặc khớp viết tắt) không
+  const items = trimmed.split(/[,;\n]+/).map((i) => i.trim()).filter(Boolean);
+  if (
+    items.length > 0 &&
+    items.every((item) => {
+      const itemLow = item.toLowerCase();
+      if (rawLower.includes(itemLow)) return true;
+      return ABBR_ITEM_PAIRS.some(([patExtract, patRaw]) => patExtract.test(itemLow) && patRaw.test(rawLower));
+    })
+  ) {
+    return trimmed;
+  }
+
+  // Nhận diện hiện trạng nội thất tương đương (full đồ, đcb, cb, cơ bản, nb, nguyên bản, thô, không đồ)
+  if (lower.includes("full") || lower.includes("đủ đồ") || lower.includes("đầy đủ")) {
+    if (/(?:^|[^\wà-ỹ])(?:full|đủ\s*đồ|đầy\s*đủ)(?:[^\wà-ỹ]|$)/i.test(rawLower)) return trimmed;
+  }
+  if (lower.includes("cơ bản") || lower === "đcb" || lower === "cb") {
+    if (/(?:^|[^\wà-ỹ])(?:cơ\s*bản|đồ\s*cơ\s*bản|đcb|cb)(?:[^\wà-ỹ]|$)/i.test(rawLower)) return trimmed;
+  }
+  if (lower.includes("nguyên bản") || lower === "nb") {
+    if (/(?:^|[^\wà-ỹ])(?:nguyên\s*bản|nb)(?:[^\wà-ỹ]|$)/i.test(rawLower)) return trimmed;
   }
   if (lower.includes("thô")) {
     if (/thô/i.test(rawLower)) return trimmed;
@@ -669,19 +691,51 @@ export function auditAndVerifyExtractedProperty(
   }
   prop.handover_condition = prop.furniture_status || null;
 
-  // 4. Kiểm toán điều kiện cấm (Negative Constraints Preservation)
-  const foodBanMatch = text.match(/không\s*(?:làm\s*)?(?:hàng\s*ăn|ăn\s*uống|kinh\s*doanh\s*ăn\s*uống|quán\s*ăn)/i);
-  if (foodBanMatch && prop.key_details) {
-    if (!/không\s*(?:làm\s*)?(?:hàng\s*ăn|ăn\s*uống)/i.test(prop.key_details.vi || "")) {
-      prop.key_details.vi = `${prop.key_details.vi ? prop.key_details.vi + ". " : ""}Chủ nhà không cho làm hàng ăn/ăn uống`;
-      audit_notes.push("Bảo tồn điều kiện cấm hàng ăn (VI)");
+  // 4. Kiểm toán điều kiện cấm & hạn chế thuê (Thuần Tiếng Việt)
+  if (prop.key_details) {
+    let vi = prop.key_details.vi || "";
+
+    // 4a. Cấm hàng ăn / ăn uống
+    if (/không\s*(?:làm\s*)?(?:hàng\s*ăn|ăn\s*uống|kinh\s*doanh\s*ăn\s*uống|quán\s*ăn)/i.test(text)) {
+      if (!/không\s*(?:làm\s*)?(?:hàng\s*ăn|ăn\s*uống)/i.test(vi)) {
+        vi = `${vi ? vi.replace(/\.*$/, "") + ". " : ""}Chủ nhà không cho làm hàng ăn/ăn uống.`;
+        audit_notes.push("Bảo tồn điều kiện cấm hàng ăn");
+      }
     }
-    if (!/no\s*(?:f&b|food|restaurant)/i.test(prop.key_details.en || "")) {
-      prop.key_details.en = `${prop.key_details.en ? prop.key_details.en + ". " : ""}No F&B allowed`;
+
+    // 4b. Cấm CHDV (KO chdv / không cho thuê làm căn hộ dịch vụ)
+    if (/(?:\bko\b|\bk\b|không)\s*(?:cho\s*thuê\s*)?(?:làm\s*)?(?:chdv|căn\s*hộ\s*dịch\s*vụ)/i.test(text)) {
+      if (!/chdv|căn\s*hộ\s*dịch\s*vụ/i.test(vi)) {
+        vi = `${vi ? vi.replace(/\.*$/, "") + ". " : ""}Không cho thuê làm căn hộ dịch vụ (CHDV).`;
+        audit_notes.push("Bảo tồn điều kiện KO CHDV");
+      }
     }
-    if (!/禁止餐饮/i.test(prop.key_details.zh || "")) {
-      prop.key_details.zh = `${prop.key_details.zh ? prop.key_details.zh + "。" : ""}禁止餐饮`;
+
+    // 4c. Hạn chế khách thuê / xe điện / thú cưng (ko cho tq, k xe điện, k nuôi pet, nhận nước ngoài)
+    const extraRestrictions: string[] = [];
+    if (/\b(?:ko|k|không)\s*cho\s*tq\b/i.test(text) && !/tq/i.test(vi)) {
+      extraRestrictions.push("ko cho tq");
     }
+    if (/\b(?:ko|k|không)\s*xe\s*điện\b/i.test(text) && !/xe\s*điện/i.test(vi)) {
+      extraRestrictions.push("không xe điện");
+    }
+    if (/\b(?:ko|k|không)\s*nuôi\s*pet\b/i.test(text) && !/pet|thú\s*cưng/i.test(vi)) {
+      extraRestrictions.push("không nuôi pet");
+    }
+    if (/\bnhận\s*(?:khách\s*)?nước\s*ngoài\b/i.test(text) && !/nước\s*ngoài/i.test(vi)) {
+      extraRestrictions.push("nhận khách nước ngoài");
+    }
+    if (/\bkhông\s*chung\s*chủ\b/i.test(text) && !/chung\s*chủ/i.test(vi)) {
+      extraRestrictions.push("không chung chủ");
+    }
+    if (/\bsẵn\s*pass\b/i.test(text) && !/sẵn\s*pass/i.test(vi)) {
+      extraRestrictions.push("sẵn pass");
+    }
+    if (extraRestrictions.length > 0) {
+      vi = `${vi ? vi.replace(/\.*$/, "") + ", " : ""}${extraRestrictions.join(", ")}.`;
+    }
+
+    prop.key_details.vi = vi;
   }
 
   // 5. Làm sạch triệt để các trường thiếu về NULL
@@ -721,9 +775,135 @@ export function auditAndVerifyExtractedProperty(
 }
 
 /**
+ * Bóc tách hiện trạng và danh sách nội thất tất định Tiếng Việt (hỗ trợ đầy đủ viết tắt từ bộ 134 thuật ngữ)
+ */
+export function extractFurnitureFallback(text: string): {
+  status: string | null;
+  list: string | null;
+} {
+  let status: string | null = null;
+  let list: string | null = null;
+  if (!text) return { status, list };
+
+  // 1. Nhận diện hiện trạng nội thất (ưu tiên giữ nguyên ngoại lệ "full thiếu...")
+  const fullMissingMatch = text.match(/\bfull(?:\s*đồ|\s*nội\s*thất)?\s+thiếu\s+[^\n.,;)]+/i);
+  if (fullMissingMatch) {
+    status = fullMissingMatch[0].trim();
+  } else if (/(?:^|[^\wà-ỹ])(?:full\s*(?:đồ|nội\s*thất|gỗ|toàn\s*bộ)|đầy\s*đủ\s*nội\s*thất|nội\s*thất\s*:\s*full|đủ\s*đồ|\bfull\b)(?:[^\wà-ỹ]|$)/i.test(text)) {
+    const m = text.match(/(?:full\s*(?:đồ|nội\s*thất|gỗ|toàn\s*bộ)|đầy\s*đủ\s*nội\s*thất|đủ\s*đồ|\bfull\b)/i);
+    status = m ? m[0].trim() : "full đồ";
+  } else if (/(?:^|[^\wà-ỹ])(?:cơ\s*bản\s*(?:cđt|cdt)|nội\s*thất\s*cơ\s*bản|đồ\s*cơ\s*bản|đcb|\bcb\b|cơ\s*bản)(?:[^\wà-ỹ]|$)/i.test(text)) {
+    const m = text.match(/(?:cơ\s*bản\s*(?:cđt|cdt)|nội\s*thất\s*cơ\s*bản|đồ\s*cơ\s*bản|đcb|\bcb\b|cơ\s*bản)/i);
+    status = m ? m[0].trim() : "cơ bản";
+  } else if (/(?:^|[^\wà-ỹ])(?:nguyên\s*bản\s*(?:cđt|cdt)?|\bnb\b)(?:[^\wà-ỹ]|$)/i.test(text)) {
+    const m = text.match(/(?:nguyên\s*bản\s*(?:cđt|cdt)?|\bnb\b)/i);
+    status = m ? m[0].trim() : "nguyên bản";
+  } else if (/không\s*(?:có\s*)?đồ|nhà\s*trống|trống\s*đồ/i.test(text)) {
+    status = "không nội thất";
+  } else if (/bàn\s*giao\s*thô|\bthô\b/i.test(text)) {
+    status = "bàn giao thô";
+  }
+
+  // 2. Nhận diện danh sách món đồ (bao gồm cả phần ghi chú thiếu / chưa có)
+  const listMatch = text.match(
+    /(?:nội\s*thất(?:\s*cơ\s*bản|\s*full)?\s*[:\s-]|thiết\s*bị\s*[:\s-]|đồ\s*đạc\s*[:\s-]|k\s*thiếu\s*gì\s*|gồm\s*[:\s-]|nb\s*có\s*thêm\s*|full\s*đồ\s*[:\s-]?\s*)([^\n]+)/i
+  );
+  if (listMatch) {
+    const rawList = listMatch[1].trim().replace(/^[;,\s:-]+|[;,\s.-]+$/g, "");
+    if (rawList && !/^(?:full|full đồ|cơ bản|đcb|cb|nb|nguyên bản|đủ đồ|vào luôn)$/i.test(rawList)) {
+      list = rawList;
+    }
+  }
+
+  if (!list) {
+    const itemsFound: string[] = [];
+    const itemPatterns: [RegExp, string | null][] = [
+      [/(?:điều\s*hòa\s*âm\s*trần|điều\s*hoà\s*âm\s*trần|đh\s*âm\s*trần|dh\s*âm\s*trần|điều\s*hòa|điều\s*hoà|\bđh\b|\bdh\b)/i, null],
+      [/(?:bình\s*nóng\s*lạnh|nóng\s*lạnh|\bnl\b)/i, null],
+      [/(?:máy\s*giặt\s*sấy|giặt\s*sấy|máy\s*giặt|may\s*giặt|\bmgiặt\b)/i, null],
+      [/(?:máy\s*rửa\s*bát)/i, null],
+      [/(?:tủ\s*lạnh|\btlạnh\b)/i, null],
+      [/(?:bếp\s*từ|\bbtừ\b)/i, null],
+      [/(?:bếp\s*điện)/i, null],
+      [/(?:hút\s*mùi)/i, null],
+      [/(?:thang\s*máy)/i, null],
+      [/(?:giường\s*tủ|\bgtủ\b|giường)/i, null],
+      [/(?:tủ\s*quần\s*áo)/i, null],
+      [/(?:đệm)/i, null],
+      [/(?:rèm)/i, null],
+      [/(?:giàn\s*phơi)/i, null],
+      [/(?:kệ\s*ti\s*vi|tivi|\btv\b)/i, null],
+      [/(?:tủ\s*bếp)/i, null],
+      [/(?:sofa|sopha|bàn\s*ghế|bàn\s*ăn)/i, null],
+      [/(?:quạt\s*trần)/i, null],
+      [/(?:khóa\s*vân\s*tay)/i, null],
+    ];
+    for (const [pat] of itemPatterns) {
+      const m = text.match(pat);
+      if (m && !itemsFound.includes(m[0])) {
+        itemsFound.push(m[0]);
+      }
+    }
+    // Bảo tồn ghi chú thiếu đồ (ví dụ: "thiếu tv và đệm", "chưa có bếp")
+    const missingMatch = text.match(/(?:thiếu\s+[^\n.,;)]+|chưa\s+có\s+[^\n.,;)]+)/i);
+    if (missingMatch) {
+      itemsFound.push(missingMatch[0].trim());
+    }
+    if (itemsFound.length > 0) {
+      list = itemsFound.join(", ");
+    }
+  }
+
+  return { status, list };
+}
+
+/**
+ * Bóc tách điều kiện thanh toán, đặt cọc và thời hạn hợp đồng Tiếng Việt (3c1, 1c1, tt3c1, đóng 3 cọc 10tr...)
+ */
+export function extractLeaseTermFallback(text: string): string | null {
+  if (!text) return null;
+  const parts: string[] = [];
+
+  // 1. Mẫu hình thức thanh toán / cọc rõ ràng
+  const payMatch = text.match(
+    /(?:hình\s*thức|thanh\s*toán)\s*[:\s-]*([^\n.]+)|(?:\(?\s*đóng\s*\d+\s*\)?\s*\(?\s*cọc\s*\d+(?:\s*tr(?:iệu)?)?\s*\)?(?:\s*\(?\s*(?:hợp\s*đồng|hđ)\s*[^\n.)]+\)?)?)|(?:\d+\s*cọc\s*\d+\s*hoặc\s*\d+\s*cọc\s*\d+)|(?:\b(?:tt\s*)?\d+\s*c\s*\d+\b)|(?:\btt\s*\d+\s*cọc\s*\d+\b)|(?:\bcọc\s*\d+\s*(?:thanh\s*toán|đóng|tt)\s*\d+\b)/i
+  );
+  if (payMatch) {
+    parts.push((payMatch[1] || payMatch[0]).trim());
+  }
+
+  // 2. Mẫu thời hạn hợp đồng (hđ tối thiểu 1 năm, ký từ 2 năm trở lên, HĐ 12T...)
+  const termMatch = text.match(
+    /(?:hợp\s*đồng|hđ|thời\s*hạn)\s*[:\s-]*(?:ký\s*từ\s*|tối\s*thiểu\s*)?\d+\s*(?:năm|tháng|t\b)(?:\s*trở\s*lên)?/i
+  );
+  if (termMatch && !parts.some((p) => p.toLowerCase().includes(termMatch[0].toLowerCase()))) {
+    parts.push(termMatch[0].trim());
+  }
+
+  return parts.length > 0 ? parts.join(", ") : null;
+}
+
+/**
+ * Bóc tách hoa hồng môi giới Tiếng Việt (hh, hh sale, hoa hồng sale, phí mg, hh chủ nhà nửa tháng...)
+ */
+export function extractCommissionFallback(text: string): string | null {
+  if (!text) return null;
+  const match = text.match(
+    /(?:hoa\s*hồng(?:\s*sale|\s*chủ\s*nhà)?|hh(?:\s*sale|\s*chủ\s*nhà)?|phí\s*(?:môi\s*giới|mô\s*giới|mg))\s*[:\s-]*([^\n.)]+)/i
+  );
+  if (match) {
+    const val = match[1].trim().replace(/^[;,\s:-]+|[;,\s.-]+$/g, "");
+    if (val) return val;
+  }
+  const combineMatch = text.match(/trừ\s*\d+%\s*cho\s*bên\s*kết\s*hợp/i);
+  if (combineMatch) return combineMatch[0].trim();
+  return null;
+}
+
+/**
  * Bóc tách giá tiền tất định dự phòng (Deterministic Price Extractor Fallback)
- * Hỗ trợ mọi biến thể thực tế: "Giá_Thuê: 22 triệu/tháng", "Giá: 8tr2", "130k/m", "60k/1m", "20tr", "$750"...
- * Đồng thời quét tóm tắt Tiếng Việt (key_details.vi) nếu Gemini đã ghi giá vào tóm tắt nhưng bỏ sót trường số.
+ * Hỗ trợ mọi biến thể thực tế: "Giá_Thuê: 22 triệu/tháng", "13tr500", "11tr5", "8tr2", "130k/m", "60k/1m", "20tr", "$750"...
+ * Không bắt nhầm phí dịch vụ (Pdv 8,8k, DV 2.4k/m2), tiền cọc (cọc 10tr) hay hoa hồng (hh 5tr).
  */
 export function extractPriceFallback(
   text: string,
@@ -737,10 +917,30 @@ export function extractPriceFallback(
 } | null {
   if (!text && !currentViSummary) return null;
 
-  // 1. Phục hồi từ tóm tắt Tiếng Việt nếu đã có tóm tắt ghi giá rõ ràng
+  // 1. Ưu tiên nhận diện mẫu viết tắt số lẻ sau chữ tr/củ/tỷ: "13tr500" -> 13.5 triệu, "11tr5" -> 11.5 triệu, "8tr2" -> 8.2 triệu
+  const decimalSlangMatch = text.match(
+    /(?:giá[\s_]*(?:thuê|chào|chỉ)?\s*[:\s-]*)?(\d+)\s*(tr|củ|tỷ|ty)\s*(\d{1,3})\b/i
+  );
+  if (decimalSlangMatch) {
+    const major = parseInt(decimalSlangMatch[1], 10);
+    const unit = decimalSlangMatch[2].toLowerCase();
+    const minorStr = decimalSlangMatch[3];
+    const minor = parseInt(minorStr, 10);
+    const num = major + minor / Math.pow(10, minorStr.length);
+    const multiplier = unit.startsWith("t") && unit !== "tr" ? 1000000000 : 1000000;
+    return {
+      amount: Math.round(num * multiplier),
+      currency: "VND",
+      basis: "total",
+      period: null,
+      textSnippet: `${decimalSlangMatch[1]}${decimalSlangMatch[2]}${minorStr}`,
+    };
+  }
+
+  // 2. Phục hồi từ tóm tắt Tiếng Việt nếu đã có tóm tắt ghi giá rõ ràng
   if (currentViSummary) {
     const viMatch = currentViSummary.match(
-      /(?:giá(?: thuê)?|thuê|chào)\s*[:\s]*(\d+(?:[.,]\d+)?)\s*(triệu|trieu|tr|củ|tỷ|usd|\$)(?:\s*\/\s*(tháng|thang|th|năm|nam))?/i
+      /(?:giá(?: thuê)?|thuê|chào)\s*[:\s]*(\d+(?:[.,]\d+)?)\s*(triệu|trieu|tr|củ|tỷ|usd|\$)(?!\d)(?:\s*\/\s*(tháng|thang|th|năm|nam))?/i
     );
     if (viMatch) {
       const num = parseFloat(viMatch[1].replace(",", "."));
@@ -772,80 +972,70 @@ export function extractPriceFallback(
     }
   }
 
-  // 2. Mẫu có tiền tố rõ ràng (Giá_Thuê, Giá thuê, Giá chào, Giá: Full nt: 20tr...)
-  // Chú ý: [\s_]* hỗ trợ dấu gạch dưới như Giá_Thuê; [^\d\n]{0,25}? bỏ qua các từ xen giữa như "Full nt :"
+  // 3. Mẫu có tiền tố rõ ràng (Giá_Thuê, Giá thuê, Giá chào, Giá chỉ, Giá: Full nt: 20tr...)
+  // Loại trừ tiền cọc, hoa hồng (hh), phí dịch vụ (pdv)
   const prefixMatch = text.match(
-    /(?:(?:giá|gia)[\s_]*(?:thuê|thue|chào|chao|bán|ban|net)?|thuê|thue|chào|chao|price)\s*[:\s=-]*([^\d\n]{0,25}?)(\d+(?:[.,]\d+)?)\s*(triệu(?:\/tháng|\/thang|\/th)?|trieu(?:\/tháng|\/thang|\/th)?|tr(?:\/tháng|\/thang|\/th)?|củ|tỷ|ty|\bk\b(?![a-zA-Zà-ỹÀ-Ỹ0-9])|usd|\$)/i
+    /(?:(?:giá|gia)[\s_]*(?:thuê|thue|chào|chao|bán|ban|chỉ|net|tốt)?|thuê|thue|chào|chao|price)\s*[:\s=-]*([^\d\n]{0,25}?)(\d+(?:[.,]\d+)?)\s*(triệu(?:\/tháng|\/thang|\/th)?|trieu(?:\/tháng|\/thang|\/th)?|tr(?:\/tháng|\/thang|\/th)?|củ|tỷ|ty|\bk\b(?![a-zA-Zà-ỹÀ-Ỹ0-9])|usd|\$)(?!\d)/i
   );
   if (prefixMatch) {
-    const num = parseFloat(prefixMatch[2].replace(",", "."));
-    const rawUnit = prefixMatch[3].toLowerCase();
-    let amount: number | null = null;
-    let currency = "VND";
-    let basis = "total";
-    let period: string | null = null;
+    const betweenText = (prefixMatch[1] || "").toLowerCase();
+    if (!/\b(?:hh|hoa\s*hồng|phí\s*mg|pdv|phí\s*dv|cọc)\b/i.test(betweenText)) {
+      const num = parseFloat(prefixMatch[2].replace(",", "."));
+      const rawUnit = prefixMatch[3].toLowerCase();
+      let amount: number | null = null;
+      let currency = "VND";
+      let basis = "total";
+      let period: string | null = null;
 
-    if (rawUnit.includes("/tháng") || rawUnit.includes("/thang") || rawUnit.includes("/th")) {
-      period = "Theo tháng";
+      if (rawUnit.includes("/tháng") || rawUnit.includes("/thang") || rawUnit.includes("/th")) {
+        period = "Theo tháng";
+      }
+
+      if (rawUnit.startsWith("tr") || rawUnit.startsWith("củ")) {
+        amount = Math.round(num * 1000000);
+      } else if (rawUnit.startsWith("tỷ") || rawUnit.startsWith("ty")) {
+        amount = Math.round(num * 1000000000);
+      } else if (rawUnit === "usd" || rawUnit === "$") {
+        amount = num;
+        currency = "USD";
+      } else if (rawUnit === "k") {
+        amount = Math.round(num * 1000);
+        basis = "per_m2";
+      }
+
+      if (amount && amount > 0) {
+        return {
+          amount,
+          currency,
+          basis,
+          period,
+          textSnippet: `${prefixMatch[2]} ${prefixMatch[3]}`,
+        };
+      }
     }
+  }
 
-    if (rawUnit.startsWith("tr") || rawUnit.startsWith("củ")) {
-      amount = Math.round(num * 1000000);
-    } else if (rawUnit.startsWith("tỷ") || rawUnit.startsWith("ty")) {
-      amount = Math.round(num * 1000000000);
-    } else if (rawUnit === "usd" || rawUnit === "$") {
-      amount = num;
-      currency = "USD";
-    } else if (rawUnit === "k") {
-      amount = Math.round(num * 1000);
-      basis = "per_m2";
-    }
-
-    if (amount && amount > 0) {
+  // 4. Mẫu đơn giá thuê theo mét vuông: "130k/m", "60k/1m", "150k/m2" (Loại trừ "DV 2.4k/m2", "Pdv 8,8k")
+  const perM2Match = text.match(
+    /(?<!\b(?:dv|pdv|dịch\s*vụ)\s*[:\s-]*)(?:giá\s*[:\s-]*)?(\d+(?:[.,]\d+)?)\s*(?:k|đ|vnđ|nghìn)\s*\/\s*(?:1\s*)?(?:m2|m²|m|sàn)/i
+  );
+  if (perM2Match) {
+    const num = parseFloat(perM2Match[1].replace(",", "."));
+    if (num >= 15) {
+      const amount = num < 1000 ? Math.round(num * 1000) : Math.round(num);
       return {
         amount,
-        currency,
-        basis,
-        period,
-        textSnippet: `${prefixMatch[2]} ${prefixMatch[3]}`,
+        currency: "VND",
+        basis: "per_m2",
+        period: null,
+        textSnippet: perM2Match[0].trim(),
       };
     }
   }
 
-  // 3. Mẫu viết tắt tiếng lóng thập phân: "8tr2" -> 8.2 triệu, "12tr5" -> 12.5 triệu
-  const decimalSlangMatch = text.match(/(?:giá[\s_]*(?:thuê)?\s*[:\s-]*)?(\d+)\s*(?:tr|củ)\s*(\d+)\b/i);
-  if (decimalSlangMatch) {
-    const major = parseInt(decimalSlangMatch[1], 10);
-    const minor = parseInt(decimalSlangMatch[2], 10);
-    const num = major + minor / Math.pow(10, String(minor).length);
-    return {
-      amount: Math.round(num * 1000000),
-      currency: "VND",
-      basis: "total",
-      period: null,
-      textSnippet: `${decimalSlangMatch[1]}tr${decimalSlangMatch[2]}`,
-    };
-  }
-
-  // 4. Mẫu đơn giá theo mét vuông: "130k/m", "60k/1m", "150k/m2", "85000đ/m2"
-  const perM2Match = text.match(
-    /(?:giá\s*[:\s-]*)?(\d+(?:[.,]\d+)?)\s*(?:k|đ|vnđ|nghìn)\s*\/\s*(?:1\s*)?(?:m2|m²|m|sàn)/i
-  );
-  if (perM2Match) {
-    const num = parseFloat(perM2Match[1].replace(",", "."));
-    const amount = num < 1000 ? Math.round(num * 1000) : Math.round(num);
-    return {
-      amount,
-      currency: "VND",
-      basis: "per_m2",
-      period: null,
-      textSnippet: perM2Match[0].trim(),
-    };
-  }
-
-  // 5. Mẫu số kèm đơn vị triệu/tháng không có tiền tố: "22 triệu/tháng", "16tr/tháng"
+  // 5. Mẫu số kèm đơn vị triệu/tháng không có tiền tố (loại trừ cọc 10tr, hh 5tr, phí 24tr, tài chính...)
   const standAloneMatch = text.match(
-    /(?:^|[^\wà-ỹ])(\d+(?:[.,]\d+)?)\s*(triệu|trieu|tr|củ)\s*(?:\/\s*(tháng|thang|th))?(?![a-zA-Zà-ỹÀ-Ỹ0-9])/i
+    /(?<!\b(?:cọc|hh|hoa\s*hồng|phí|mg|tài\s*chính|tc)\s*[:\s-]*)(?:^|[^\wà-ỹ])(\d+(?:[.,]\d+)?)\s*(triệu|trieu|tr|củ)\s*(?:\/\s*(tháng|thang|th))?(?![a-zA-Zà-ỹÀ-Ỹ0-9])/i
   );
   if (standAloneMatch) {
     const num = parseFloat(standAloneMatch[1].replace(",", "."));
@@ -863,12 +1053,12 @@ export function extractPriceFallback(
 }
 
 /**
- * Trích xuất mục đích sử dụng / công năng phù hợp (Suitable for)
+ * Trích xuất mục đích sử dụng / công năng phù hợp Tiếng Việt (Suitable for)
  */
 export function extractSuitableFor(text: string): string | null {
   if (!text) return null;
   const match = text.match(
-    /(?:phù\s*hợp(?:\s*để|\s*cho|\s*làm)?|thích\s*hợp(?:\s*để|\s*cho|\s*làm)?|tiện(?:\s*làm|\s*kinh\s*doanh)?|mô\s*hình\s*[:\s-]*|công\s*năng\s*[:\s-]*)\s*[:\s-]*([^\n.]+)/i
+    /(?:phù\s*hợp(?:\s*để|\s*cho|\s*làm)?|thích\s*hợp(?:\s*để|\s*cho|\s*làm)?|thuận\s*tiện(?:\s*làm)?|tiện(?:\s*làm|\s*kinh\s*doanh|\s*kd)?|ưu\s*tiên(?:\s*cho\s*thuê)?|mô\s*hình\s*[:\s-]*|công\s*năng\s*[:\s-]*)\s*[:\s-]*([^\n.]+)/i
   );
   if (match) {
     let raw = match[1].trim();
@@ -882,7 +1072,7 @@ export function extractSuitableFor(text: string): string | null {
 }
 
 /**
- * Nhận diện kết cấu đặc biệt: Tầng hầm, Tầng lửng, Tầng tum
+ * Nhận diện kết cấu đặc biệt Tiếng Việt: Hầm, Lửng, Tum, Gác xép, Sân thượng, Cải tạo phòng, Chủ giữ lại phòng, MPDV
  */
 export function extractSpecialStructureNotes(text: string): {
   hasBasement: boolean;
@@ -891,11 +1081,20 @@ export function extractSpecialStructureNotes(text: string): {
   mezzanineText?: string;
   hasTum: boolean;
   tumText?: string;
+  hasLoft: boolean;
+  loftText?: string;
+  hasRooftop: boolean;
+  rooftopText?: string;
+  remodeledText?: string;
+  ownerRetainedText?: string;
+  mpdvNote?: string;
 } {
   const result: any = {
     hasBasement: false,
     hasMezzanine: false,
     hasTum: false,
+    hasLoft: false,
+    hasRooftop: false,
   };
   if (!text) return result;
 
@@ -920,11 +1119,49 @@ export function extractSpecialStructureNotes(text: string): {
     result.tumText = /sân\s*phơi/i.test(tumMatch[0]) ? "tầng tum sân phơi" : "tầng tum";
   }
 
+  // Gác xép / xép
+  const loftMatch = text.match(/(?:(\d+)\s*gác\s*xép|gác\s*xép|\bxép\b)/i);
+  if (loftMatch) {
+    result.hasLoft = true;
+    result.loftText = loftMatch[1] ? `${loftMatch[1]} gác xép` : "gác xép";
+  }
+
+  // Sân thượng
+  if (/sân\s*thượng/i.test(text)) {
+    result.hasRooftop = true;
+    result.rooftopText = "sân thượng";
+  }
+
+  // Cải tạo thiết kế (VD: "3N sửa thành 2n+")
+  const remodelMatch = text.match(/(\d+\s*(?:n|pn)\s*sửa\s*thành\s*\d+\s*(?:n|pn)\+?)/i);
+  if (remodelMatch) {
+    result.remodeledText = remodelMatch[1].trim();
+  }
+
+  // Chủ giữ lại phòng (VD: "chủ giữ lại 1 phòng để dạy học")
+  const retainMatch = text.match(/(chủ\s*giữ\s*lại\s*[^\n.,;)]+)/i);
+  if (retainMatch) {
+    result.ownerRetainedText = retainMatch[1].trim();
+  }
+
+  // Phân biệt MPDV vs Hết MPDV / K MPDV
+  if (/\b(?:hết|k|ko|không)\s*mpdv\b/i.test(text)) {
+    const m = text.match(/\b(?:hết|k|ko|không)\s*mpdv\b/i);
+    result.mpdvNote = m && /^hết/i.test(m[0]) ? "hết miễn phí dịch vụ (hết mpdv)" : "không miễn phí dịch vụ (k mpdv)";
+  } else {
+    const mpdvUntil = text.match(/\bmpdv\s*(?:tới|đến)\s*([^\n.,;)]+)/i);
+    if (mpdvUntil) {
+      result.mpdvNote = `miễn phí dịch vụ tới ${mpdvUntil[1].trim()}`;
+    } else if (/\bmpdv\b/i.test(text)) {
+      result.mpdvNote = "miễn phí dịch vụ (mpdv)";
+    }
+  }
+
   return result;
 }
 
 /**
- * Làm giàu tóm tắt (key_details) với công năng phù hợp và ghi chú kết cấu
+ * Làm giàu tóm tắt Tiếng Việt (key_details.vi) với công năng phù hợp và ghi chú kết cấu
  */
 export function enrichKeyDetailsWithStructureAndSuitability(
   keyDetails: any,
@@ -942,23 +1179,31 @@ export function enrichKeyDetailsWithStructureAndSuitability(
   const struct = extractSpecialStructureNotes(text);
   let vi = keyDetails.vi || "";
 
-  // Bổ sung kết cấu tum nếu có trong text mà chưa có trong vi
   if (struct.hasTum && struct.tumText && !/tum/i.test(vi)) {
     vi = vi.replace(/\.*$/, "") + `, có ${struct.tumText}`;
   }
-
-  // Bổ sung kết cấu hầm nếu có trong text mà chưa có trong vi
   if (struct.hasBasement && struct.basementText && !/hầm/i.test(vi)) {
     vi = vi.replace(/\.*$/, "") + `, có ${struct.basementText}`;
   }
-
-  // Bổ sung kết cấu lửng nếu có trong text mà chưa có trong vi
   if (struct.hasMezzanine && struct.mezzanineText && !/lửng/i.test(vi)) {
     vi = vi.replace(/\.*$/, "") + `, có ${struct.mezzanineText}`;
   }
-
-  // Bổ sung mục đích phù hợp nếu chưa có trong vi
-  if (suitable && !/phù\s*hợp/i.test(vi)) {
+  if (struct.hasLoft && struct.loftText && !/xép/i.test(vi)) {
+    vi = vi.replace(/\.*$/, "") + `, có ${struct.loftText}`;
+  }
+  if (struct.hasRooftop && struct.rooftopText && !/sân\s*thượng/i.test(vi)) {
+    vi = vi.replace(/\.*$/, "") + `, có ${struct.rooftopText}`;
+  }
+  if (struct.remodeledText && !/sửa\s*thành/i.test(vi)) {
+    vi = vi.replace(/\.*$/, "") + ` (thiết kế ${struct.remodeledText})`;
+  }
+  if (struct.ownerRetainedText && !/giữ\s*lại/i.test(vi)) {
+    vi = vi.replace(/\.*$/, "") + ` (${struct.ownerRetainedText})`;
+  }
+  if (struct.mpdvNote && !/mpdv|miễn\s*phí\s*dịch\s*vụ/i.test(vi)) {
+    vi = vi.replace(/\.*$/, "") + `, ${struct.mpdvNote}`;
+  }
+  if (suitable && !/phù\s*hợp|thuận\s*tiện|ưu\s*tiên/i.test(vi)) {
     vi = vi.replace(/\.*$/, "") + `, phù hợp: ${suitable}`;
   }
 
@@ -969,5 +1214,64 @@ export function enrichKeyDetailsWithStructureAndSuitability(
   keyDetails.vi = vi;
   return keyDetails;
 }
+
+/**
+ * Chuẩn hóa danh sách Loại hình BĐS Tiếng Việt từ các từ viết tắt (CHCC, CHDV, MBKD, LK, VP, stu, phân lô, tập thể, duplex)
+ */
+export function normalizeVietnamesePropertyTypes(
+  rawTypes: string[] | string | null | undefined,
+  rawText?: string
+): string[] {
+  const TYPE_MAP: Record<string, string> = {
+    townhouse: "Nhà phố",
+    apartment: "Căn hộ chung cư",
+    villa: "Biệt thự",
+    warehouse: "Kho bãi",
+    factory: "Nhà xưởng",
+    office: "Văn phòng",
+    retail: "Mặt bằng kinh doanh",
+    land: "Đất",
+    hotel: "Khách sạn",
+    chcc: "Căn hộ chung cư",
+    "cc": "Căn hộ chung cư",
+    chdv: "Căn hộ dịch vụ",
+    mbkd: "Mặt bằng kinh doanh",
+    lk: "Nhà liền kề",
+    "liền kề": "Nhà liền kề",
+    vp: "Văn phòng",
+    stu: "Căn hộ Studio",
+    studio: "Căn hộ Studio",
+    duplex: "Căn hộ Duplex",
+    "phân lô": "Nhà phân lô",
+    "nhà phân lô": "Nhà phân lô",
+    "tập thể": "Nhà tập thể",
+    "căn hộ tập thể": "Nhà tập thể",
+  };
+
+  const list = Array.isArray(rawTypes)
+    ? rawTypes
+    : typeof rawTypes === "string" && rawTypes.trim()
+      ? [rawTypes.trim()]
+      : [];
+
+  const normalized = list.map((t) => {
+    const clean = t.trim();
+    const mapped = TYPE_MAP[clean.toLowerCase()];
+    return mapped || clean;
+  });
+
+  if (normalized.length === 0 && rawText) {
+    if (/\b(?:chcc|chung\s*cư)\b/i.test(rawText)) normalized.push("Căn hộ chung cư");
+    else if (/\bduplex\b/i.test(rawText)) normalized.push("Căn hộ Duplex");
+    else if (/\b(?:stu|studio)\b/i.test(rawText)) normalized.push("Căn hộ Studio");
+    else if (/\b(?:lk|liền\s*kề)\b/i.test(rawText)) normalized.push("Nhà liền kề");
+    else if (/\bphân\s*lô\b/i.test(rawText)) normalized.push("Nhà phân lô");
+    else if (/\btập\s*thể\b/i.test(rawText)) normalized.push("Nhà tập thể");
+    else if (/\bmbkd\b/i.test(rawText)) normalized.push("Mặt bằng kinh doanh");
+  }
+
+  return [...new Set(normalized)];
+}
+
 
 

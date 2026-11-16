@@ -9,10 +9,16 @@ import {
   extractMultiFloorAreas,
   auditAndVerifyExtractedProperty,
   extractPriceFallback,
+  extractFurnitureFallback,
+  extractLeaseTermFallback,
+  extractCommissionFallback,
   extractSuitableFor,
   extractSpecialStructureNotes,
   enrichKeyDetailsWithStructureAndSuitability,
+  normalizeVietnamesePropertyTypes,
 } from "./golden-samples";
+
+export { extractFurnitureFallback };
 
 export interface BatchTimelineItem {
   msg_id: string;
@@ -80,7 +86,8 @@ NGUYÊN TẮC CỐT LÕI - BÓC TÁCH NGUYÊN GỐC CHỮ TRONG TIN NHẮN (STRI
    - "source_text_snippet": BẮT BUỘC trích nguyên văn đoạn văn bản mô tả riêng của chính căn đó để người duyệt đối chiếu.
 
 3. LOẠI HÌNH BĐS (property_types) - GIỮ NGUYÊN BẢN TIẾNG VIỆT:
-   - Trích xuất NGUYÊN MẪU cụm từ chỉ loại hình BĐS có trong tin nhắn dưới dạng tiếng Việt (ví dụ: ["Nhà liền kề"], ["Nhà mặt phố"], ["Căn hộ chung cư"], ["Biệt thự"], ["Kho xưởng"], ["Văn phòng"], ["Mặt bằng kinh doanh"]...).
+   - Trích xuất NGUYÊN MẪU cụm từ chỉ loại hình BĐS có trong tin nhắn dưới dạng tiếng Việt (ví dụ: ["Nhà liền kề"], ["Nhà mặt phố"], ["Căn hộ chung cư"], ["Biệt thự"], ["Kho xưởng"], ["Văn phòng"], ["Mặt bằng kinh doanh"], ["Căn hộ dịch vụ"], ["Căn hộ Studio"], ["Căn hộ Duplex"], ["Nhà phân lô"], ["Nhà tập thể"]...).
+   - Bảng quy đổi viết tắt loại hình Tiếng Việt: "CHCC" -> "Căn hộ chung cư"; "CHDV" -> "Căn hộ dịch vụ"; "MBKD" -> "Mặt bằng kinh doanh"; "LK" -> "Nhà liền kề"; "VP" -> "Văn phòng"; "stu" -> "Căn hộ Studio"; "duplex" -> "Căn hộ Duplex" (không đồng nhất với Penthouse).
    - TUYỆT ĐỐI KHÔNG DỊCH sang tiếng Anh (không dùng "townhouse", "apartment", "villa"...).
 
 4. DIỆN TÍCH MỖI TẦNG (floor_area_m2) & TỔNG DIỆN TÍCH (total_lease_area_m2):
@@ -88,9 +95,9 @@ NGUYÊN TẮC CỐT LÕI - BÓC TÁCH NGUYÊN GỐC CHỮ TRONG TIN NHẮN (STRI
      * Dạng 'A m2 x B tầng' (hoặc 'A m² x B t', 'A mét x B tầng', 'A m x B tầng'):
        - Con số A đứng trước dấu nhân luôn là DIỆN TÍCH 1 SÀN / DIỆN TÍCH MỖI TẦNG -> BẮT BUỘC ĐIỀN floor_area_m2: "A" (ví dụ: '50m² × 5 tầng' -> floor_area_m2: "50"; '120m² × 5 tầng' -> floor_area_m2: "120"; '70m2 x 8 tầng' -> floor_area_m2: "70"; '60m2 x 8 tầng' -> floor_area_m2: "60"; '40m² × 7 tầng' -> floor_area_m2: "40").
        - Tổng diện tích cho thuê total_lease_area_m2 = A * B (ví dụ: 50 * 5 = 250; 120 * 5 = 600; 70 * 8 = 560; 60 * 8 = 480).
-     * Dạng có diện tích xây dựng riêng (ví dụ '190m² x 4 tầng (XD: 100m)'):
-       - floor_area_m2: "100" (diện tích xây dựng 1 sàn).
-       - total_lease_area_m2: 100 * 4 = 400.
+     * Dạng có diện tích xây dựng riêng (ví dụ '190m² x 4 tầng (XD: 100m)' hoặc 'Diện tích: 34m, xd 24m x 3 tầng'):
+       - floor_area_m2: diện tích xây dựng 1 sàn ("100" hoặc "24").
+       - total_lease_area_m2: diện tích xây dựng * số tầng (400 hoặc 72). Ghi rõ cả DT đất và DT xây dựng vào key_details.vi.
      * Dạng diện tích đất biệt thự có sân vườn (ví dụ 'Diện tích đất: 250m² x 5 Tầng'):
        - floor_area_m2: "250".
        - total_lease_area_m2: 250 (ghi nhận diện tích khuôn viên, TUYỆT ĐỐI KHÔNG nhân máy móc 250 x 5 = 1250).
@@ -102,65 +109,66 @@ NGUYÊN TẮC CỐT LÕI - BÓC TÁCH NGUYÊN GỐC CHỮ TRONG TIN NHẮN (STRI
        - floor_area_m2: để null vì là mặt phẳng đơn không chia tầng.
 
 5. NỘI THẤT & DANH SÁCH MÓN ĐỒ (VERBATIM SPAN EXTRACTION - TRÍCH NGUYÊN GỐC TỪNG CHỮ):
-   - "furniture_status": CẮT ĐÚNG TỪ/CỤM TỪ NGUYÊN GỐC trong tin nhắn thể hiện hiện trạng nội thất (ví dụ: "đủ đồ", "full đồ", "đồ cơ bản", "full gỗ", "nhà trống", "bàn giao thô", "nguyên bản cđt"...).
-     * TUYỆT ĐỐI KHÔNG TỰ QUY ĐỔI (ví dụ: tin ghi "đủ đồ" thì trích đúng "đủ đồ", CẤM đổi thành "đầy đủ nội thất").
+   - "furniture_status": CẮT ĐÚNG TỪ/CỤM TỪ NGUYÊN GỐC trong tin nhắn thể hiện hiện trạng nội thất (ví dụ: "đủ đồ", "full đồ", "đồ cơ bản", "đcb", "cb", "nb", "nguyên bản", "cơ bản CĐT", "cơ bản CDT", "full gỗ", "nhà trống", "bàn giao thô"...).
+     * QUY TẮC NGOẠI LỆ "FULL THIẾU ...": Nếu tin ghi "full thiếu tv và đệm" -> BẮT BUỘC giữ nguyên cả cụm "full thiếu tv và đệm", KHÔNG được chỉ cắt mỗi chữ "full" rồi bỏ rơi phần thiếu!
      * NẾU TIN KHÔNG CÓ CỤM TỪ NÀO CHỈ HIỆN TRẠNG (ví dụ: chỉ liệt kê món đồ "Dh, nl, giường, bếp" hoặc không nhắc gì): BẮT BUỘC ĐỂ NULL, TUYỆT ĐỐI KHÔNG TỰ ĐẶT TỪ "chưa rõ" VÀO ĐÂY!
-   - "furniture_list": Trích xuất NGUYÊN MẪU danh sách các món đồ được liệt kê trong tin nhắn (ví dụ: "Dh, nl, giường, bếp", "Dh âm trần, nl, THANG MÁY", "có bếp rèm", "6 điều hoà, 6 nóng lạnh, tủ bếp").
-     * Nguồn nói rõ không có món nào thì ghi rõ đúng câu chữ đó (ví dụ: "riêng tủ lạnh chưa có", "chưa có giường").
+   - "furniture_list": Trích xuất NGUYÊN MẪU danh sách các món đồ được liệt kê trong tin nhắn (ví dụ: "Dh, nl, giường, bếp", "ĐH NL TLẠNH BTỪ MGIẶT GTỦ", "có bếp rèm", "nb có thêm rèm, giàn phơi", "đh, nl (chưa có bếp)").
+     * Nhận diện đầy đủ các từ viết tắt thiết bị Tiếng Việt: đh/dh (điều hòa), nl (nóng lạnh), tlạnh (tủ lạnh), btừ (bếp từ), mgiặt (máy giặt), gtủ (giường tủ), tv (tivi), đệm, rèm, giàn phơi, bếp điện, hút mùi, giặt sấy, máy rửa bát.
+     * Nguồn nói rõ thiếu hoặc chưa có món nào thì ghi rõ đúng câu chữ đó (ví dụ: "thiếu tv và đệm", "chưa có bếp", "riêng tủ lạnh chưa có").
      * Nếu tin nhắn không liệt kê món đồ nào thì để null hoặc "".
 
 6. GIÁ TIỀN & ĐƠN VỊ & CƠ SỞ TÍNH GIÁ (GIỮ NGUYÊN BẢN TIẾNG VIỆT):
-   - "price_amount": Con số quy đổi đầy đủ (ví dụ: "60 triệu/tháng" -> 60000000, "12 tr" -> 12000000, "150K / m2" -> 150000, "85k/m2" -> 85000; "55 củ/tháng" -> 55000000; "2000$" -> 2000). Luôn tính đúng đơn vị triệu, tuyệt đối không để số 12 hay 85.
-   - TIẾNG LÓNG & TỪ VIẾT TẮT THÔNG DỤNG:
-     * "củ" = triệu đồng (ví dụ: "55 củ/tháng" -> price_amount: 55000000, price_period: "Theo tháng").
-     * "tm" = thang máy, "ac" = điều hòa, "mp" = mặt phố, "chdv" = căn hộ dịch vụ.
+   - "price_amount": Con số quy đổi đầy đủ (ví dụ: "60 triệu/tháng" -> 60000000, "13tr500" -> 13500000, "11tr5" -> 11500000, "8tr2" -> 8200000, "12 tr" -> 12000000, "150K / m2" -> 150000, "85k/m2" -> 85000; "55 củ/tháng" -> 55000000; "2000$" -> 2000).
+   - KHÔNG LẤY NHẦM PHÍ DỊCH VỤ HOẶC TIỀN CỌC LÀM GIÁ THUÊ:
+     * "Pdv 8,8k", "DV 2.4k/m²", "xe máy 45k" là phí dịch vụ, KHÔNG PHẢI giá thuê chính.
+     * "đóng 3 cọc 10tr" -> 10tr là tiền đặt cọc, KHÔNG PHẢI giá thuê.
+     * "hh 5tr", "phí 24tr" là hoa hồng môi giới, KHÔNG PHẢI giá thuê.
+   - PHÂN BIỆT RÕ "MPDV" VÀ "HẾT MPDV / K MPDV":
+     * "mpdv" = miễn phí dịch vụ; "mpdv tới t2/2027" = miễn phí dịch vụ tới tháng 2/2027.
+     * "hết mpdv", "k mpdv" = HẾT miễn phí dịch vụ / KHÔNG miễn phí dịch vụ (tuyệt đối không ghi nhầm là được miễn phí!).
    - SANG NHƯỢNG CỬA HÀNG / MẶT BẰNG:
-     * price_amount LUÔN LUÔN LÀ TIỀN THUÊ NHÀ ĐỊNH KỲ (ví dụ: "tiền nhà 25 triệu/tháng, sang nhượng đồ đạc 70 triệu" -> price_amount: 25000000, price_period: "Theo tháng").
-     * Phí sang nhượng đồ đạc / cơ sở vật chất ghi chú vào "key_details", TUYỆT ĐỐI KHÔNG lấy tiền sang nhượng gán vào price_amount.
+     * price_amount LUÔN LUÔN LÀ TIỀN THUÊ NHÀ ĐỊNH KỲ (ví dụ: "tiền nhà 25 triệu/tháng, sang nhượng đồ đạc 70 triệu" -> price_amount: 25000000).
    - NHIỀU PHƯƠNG ÁN THUÊ TRONG 1 CĂN (Thuê lẻ sàn vs Thuê cả nhà):
-     * Lấy phương án toàn bộ cả nhà làm giá chính price_amount (ví dụ: "thuê cả toà 80tr/tháng, thuê tầng 1-2 là 35tr" -> price_amount: 80000000, total_lease_area_m2 của cả toà).
-     * Ghi chú chi tiết phương án thuê lẻ từng tầng vào "key_details".
+     * Lấy phương án toàn bộ cả nhà làm giá chính price_amount, ghi chú phương án thuê lẻ vào "key_details.vi".
    - TIN NHẮN ĐÍNH CHÍNH / ĐIỀU CHỈNH TRONG DÒNG THỜI GIAN:
-     * Nếu chuỗi tin nhắn có tin gửi tiếp sau đính chính hoặc giảm giá (ví dụ: "chủ nhà vừa báo giảm còn 16.5tr/tháng"): BẮT BUỘC lấy giá và thông số mới nhất sau đính chính.
+     * Lấy giá và thông số mới nhất sau đính chính.
    - "price_currency": "VND" hoặc "USD".
-   - "price_basis" (CƠ SỞ TÍNH GIÁ - PHÂN BIỆT RÕ):
-     * KHI GIÁ TÍNH THEO MÉT VUÔNG (ví dụ: "150K / m2", "150k/m2", "85000đ/m2", "100k/m2/tháng", "12$/m2", "giá theo m2", "đơn giá /m2"): BẮT BUỘC ĐIỀN price_basis: "Theo m²".
-     * KHI GIÁ TÍNH TRỌN CĂN / TỔNG DIỆN TÍCH (ví dụ: "50 triệu/tháng", "16tr", "200 tr/ tháng", "18tr"): BẮT BUỘC ĐIỀN price_basis: "Tổng căn".
-     * Kho bãi, nhà xưởng, đất, văn phòng cho thuê báo giá theo m2: BẮT BUỘC điền price_basis: "Theo m²".
-   - "price_period": KỲ HẠN GIÁ (QUY TẮC BẢO TOÀN NGUYÊN BẢN - ZERO EXTRAPOLATION):
-     * "Theo tháng": CHỈ ĐIỀN khi tin nhắn có chữ rõ ràng chỉ kỳ hạn theo tháng (ví dụ: "/tháng", "triệu/tháng", "tr/tháng", "tr/th", "/th", "theo tháng", "1 tháng", "hàng tháng").
-     * "Theo năm": CHỈ ĐIỀN khi tin nhắn có chữ rõ ràng chỉ kỳ hạn theo năm (ví dụ: "/năm", "triệu/năm", "theo năm", "1 năm").
-     * "Một lần": CHỈ ĐIỀN khi tin nhắn thể hiện giao dịch bán, mua đứt, chuyển nhượng 1 lần.
-     * NẾU TIN NHẮN KHÔNG NÊU RÕ KỲ HẠN (ví dụ: chỉ ghi "GIÁ thuê:150K / m2", "Giá thuê : 55tr", "giá 8,5tr", "12 triệu", "50tr", "39 triệu"): BẮT BUỘC ĐỂ NULL, TUYỆT ĐỐI KHÔNG TỰ SUY DIỄN HAY TỰ DỊCH NGHĨA THÀNH "Theo tháng"!
-   - "price_text": Sao chép NGUYÊN VĂN câu giá từ tin nhắn (ví dụ: "150K / m2", "60 triệu/tháng (có TL)", "14 tr mpdv", "85 triệu/tháng", "55tr").
+   - "price_basis": "Theo m²" (khi tính theo m2) hoặc "Tổng căn" (khi tính trọn căn).
+   - "price_period": CHỈ ĐIỀN "Theo tháng", "Theo năm", hoặc "Một lần" khi tin nhắn có chữ rõ ràng chỉ kỳ hạn. Nếu không nêu rõ kỳ hạn -> BẮT BUỘC ĐỂ NULL!
+   - "price_text": Sao chép NGUYÊN VĂN câu giá từ tin nhắn (bao gồm cả "có TL", "ctl", "có tl sâu", "có deal", "giá chốt", "mpdv", "hết mpdv"...).
 
-7. HOA HỒNG & ĐIỀU KIỆN HỢP ĐỒNG (GIỮ NGUYÊN VĂN):
-   - "landlord_commission_text": Sao chép NGUYÊN VĂN câu chữ hoa hồng của chủ nhà (ví dụ: "1 tháng bên mình 50%", "hh full", "1 tháng tiền nhà").
+7. HOA HỒNG & ĐIỀU KIỆN HỢP ĐỒNG (GIỮ NGUYÊN VĂN TIẾNG VIỆT):
+   - "landlord_commission_text": Sao chép NGUYÊN VĂN câu chữ hoa hồng/phí môi giới (nhận diện các từ: "hh", "hh sale", "hoa hồng sale", "phí mg", "phí môi giới", "hh 1/2 tháng", "hh chủ nhà nửa tháng", "1 tháng nếu hđ 2 năm, phí mg 1/2 tháng nếu hđ 1 năm", "Trừ 30% cho bên kết hợp").
+     * Lưu ý: "Trừ 30% cho bên kết hợp" là tỷ lệ chia hoa hồng môi giới, TUYỆT ĐỐI KHÔNG trừ vào giá thuê nhà.
    - "our_share_percent": Tỷ lệ % bên mình nhận nếu có nhắc (ví dụ: 50).
    - "our_share_text": Sao chép NGUYÊN VĂN (ví dụ: "bên mình 50%").
-   - "lease_term_text": Sao chép NGUYÊN VĂN điều kiện cọc, đóng tiền, thời hạn hợp đồng từ tin nhắn (ví dụ: "thanh toán 3 cọc 1, hợp đồng 1 năm", "ký từ 3 năm trở lên", "6 cọc 1 hoặc 3 cọc 1, hợp đồng 3 năm trở lên").
+   - "lease_term_text": Sao chép NGUYÊN VĂN điều kiện cọc, đóng tiền, thời hạn hợp đồng (nhận diện cả viết tắt: "3c1" = đóng 3 cọc 1, "1c1" = đóng 1 cọc 1, "tt3c1", "tt3 cọc 2", "6 cọc 1 hoặc 3 cọc 2" - giữ nguyên 2 phương án không ghép chéo, "đóng 3 cọc 10tr" - đóng 3 kỳ cọc 10 triệu khác đơn vị, "hđ tối thiểu 1 năm", "ký từ 2 năm trở lên").
 
-8. BẢO TOÀN ĐIỀU KIỆN CẤM & NGÀNH NGHỀ HẠN CHẾ (NEGATIVE CONSTRAINTS):
-   - Nếu tin nhắn có ghi chú hạn chế / ngành cấm của chủ nhà như:
-     "không làm hàng ăn", "không ăn uống", "không nấu nướng", "không làm spa", "không ở lại", "cấm kinh doanh ăn uống"...
-   - BẮT BUỘC PHẢI GIỮ NGUYÊN ĐIỀU KIỆN NÀY trong tóm tắt "key_details" ở cả 3 thứ tiếng:
-     * vi: "... (chủ nhà không cho làm hàng ăn / kinh doanh ăn uống)"
-     * en: "... (no food & beverage / restaurant businesses allowed)"
-     * zh: "... (房东禁止餐饮业)"
+8. QUY TẮC PHÂN BIỆT TỪ VIẾT TẮT ĐA NGHĨA TIẾNG VIỆT:
+   - "TT / tt": (1) Thanh toán ("tt3c1", "tt 3"), (2) Trung tâm ("TT dạy học", "TT đào tạo"), (3) Tập thể ("nhà TT", "căn hộ TT").
+   - "TC / tc": (1) Mã tòa nhà ("Tòa TC1", "TC2", "TC3" -> đưa vào address_text), (2) Tài chính ngân sách khách tìm thuê ("tài chính 2 tỷ 7").
+   - "Đc / dc": (1) Địa chỉ ("Đc: Tố Hữu"), (2) chữ "được" ("10,5tr bên mas dc ko?", "vào đc từ T12" -> không cắt nhầm làm địa chỉ).
+   - "CC / cc": (1) Chung cư ("căn hộ CC Invest", "CC Licogi"), (2) Chính chủ ("CC gửi bán").
+   - "NT / nt": (1) Nội thất ("full nt"), (2) trong cụm "k view NT" -> giữ nguyên văn "k view NT" trong tóm tắt, không tự suy đoán.
+   - Ký hiệu phòng: "1N+" / "1PN+" (1 phòng ngủ + không gian phụ, KHÔNG tự cộng thành 2PN), "2n1" (2 ngủ 1 vệ sinh), "2n2" (2 ngủ 2 vệ sinh), "1n1k" (1 ngủ 1 khách), "PK" (phòng khách), "VS / WC / w" (vệ sinh), "3N sửa thành 2n+" (giữ rõ thông tin cải tạo).
 
-9. BẢO TOÀN KẾT CẤU ĐẶC BIỆT (TẦNG HẦM, TẦNG LỬNG, TẦNG TUM) & NGUYÊN TẮC ZERO EXTRAPOLATION:
+9. BẢO TOÀN ĐIỀU KIỆN CẤM & HẠN CHẾ THUÊ TRONG TÓM TẮT TIẾNG VIỆT (key_details.vi):
+   - BẮT BUỘC giữ nguyên mọi điều kiện hạn chế của chủ nhà trong "key_details.vi":
+     * Cấm hàng ăn / ăn uống ("không làm hàng ăn", "cấm kinh doanh ăn uống").
+     * Cấm căn hộ dịch vụ ("KO chdv", "không cho thuê làm căn hộ dịch vụ").
+     * Ghi chú đối tượng / phương tiện / thú cưng ("ko cho tq", "nhận nước ngoài", "k xe điện", "k nuôi PET", "không chung chủ", "sẵn pass").
+     * Chủ giữ lại phòng ("chủ giữ lại 1 phòng để dạy học" -> cảnh báo rõ chủ giữ lại không gian, không giao thuê toàn bộ).
+
+10. BẢO TOÀN KẾT CẤU ĐẶC BIỆT (HẦM, LỬNG, TUM, GÁC XÉP, SÂN THƯỢNG) & NGUYÊN TẮC ZERO EXTRAPOLATION:
    - Nếu tin nhắn KHÔNG nêu rõ diện tích tổng có bao gồm tầng hầm hay không -> TUYỆT ĐỐI KHÔNG TỰ SUY ĐOÁN hay cộng gộp diện tích hầm vào "total_lease_area_m2".
-     * Ví dụ: "Nhà 8 tầng + 1 hầm, DT 90m2" -> total_lease_area_m2 = 8 * 90 = 720m2 (chỉ tính 8 tầng nổi), TUYỆT ĐỐI KHÔNG tự nhân 9 * 90 = 810m2.
-     * BẮT BUỘC giữ nguyên kết cấu trong tóm tắt "key_details.vi": "... gồm 8 tầng nổi + 1 tầng hầm".
-   - Tầng lửng và tầng tum: BẮT BUỘC ghi rõ trong tóm tắt "key_details.vi" (ví dụ: "... có tầng lửng", "... tầng tum sân phơi").
+   - BẮT BUỘC ghi rõ trong "key_details.vi" nếu căn có: tầng hầm, tầng lửng, tầng tum / tum sân phơi, gác xép / xép, sân thượng.
 
-10. CÔNG NĂNG & MỤC ĐÍCH SỬ DỤNG PHÙ HỢP (SUITABLE USES):
-   - Nếu tin nhắn có nhắc đến mục đích phù hợp (ví dụ: "phù hợp: văn phòng cty, spa, TT dạy học, phòng khám, kd online...", "kho phù hợp làm kho chứa hàng, sản xuất và logistics"):
-   - BẮT BUỘC PHẢI GIỮ LẠI trong tóm tắt "key_details.vi" (ví dụ: "... phù hợp văn phòng cty, spa, TT dạy học, phòng khám, kd online.") và điền vào "key_details.suitable_for".
+11. CÔNG NĂNG & MỤC ĐÍCH SỬ DỤNG PHÙ HỢP (SUITABLE USES):
+   - Nếu tin nhắn có nhắc đến mục đích phù hợp / ưu tiên / thuận tiện (ví dụ: "phù hợp: văn phòng cty, spa, TT dạy học, kdon / k donl (kinh doanh online)..."):
+   - BẮT BUỘC giữ lại trong tóm tắt "key_details.vi" và điền vào "key_details.suitable_for".
 
-11. TÓM TẮT 3 NGÔN NGỮ (key_details: vi, en, zh):
-   - vi: Tóm tắt đầy đủ, súc tích, trung thực 100% dựa vào các thông số có thật của căn đó (kết cấu, hầm/lửng/tum, đồ đạc, công năng phù hợp, giá).
-   - en & zh: Bản dịch tương ứng sát nghĩa và đầy đủ.
+12. TÓM TẮT TIẾNG VIỆT CHUẨN XÁC (key_details.vi):
+   - Tập trung tối đa cho "key_details.vi": Tóm tắt đầy đủ, súc tích, trung thực 100% bằng Tiếng Việt dựa vào các thông số có thật của căn đó. (Các trường en, zh chỉ điền ngắn gọn để đúng cấu trúc JSON).
 
 ${goldenSamplesText}
 `;
@@ -389,69 +397,6 @@ export function splitBatchTranscriptByProperties(
 }
 
 /**
- * Trích xuất hiện trạng và danh sách nội thất tất định bằng biểu thức chính quy (Deterministic Furniture Extractor)
- */
-export function extractFurnitureFallback(text: string): {
-  status: string | null;
-  list: string | null;
-} {
-  const lower = text.toLowerCase();
-  let status: string | null = null;
-  let list: string | null = null;
-
-  // 1. Nhận diện hiện trạng nội thất
-  if (
-    /full\s*(?:đồ|nội\s*thất|toàn\s*bộ)|đầy\s*đủ\s*nội\s*thất|nội\s*thất\s*:\s*full|\bfull\b|đủ\s*đồ/i.test(
-      lower
-    )
-  ) {
-    status = "full đồ";
-  } else if (/nội\s*thất\s*cơ\s*bản|đồ\s*cơ\s*bản|\bcơ\s*bản\b/i.test(lower)) {
-    status = "cơ bản";
-  } else if (/không\s*(?:có\s*)?đồ|nhà\s*trống|trống\s*đồ/i.test(lower)) {
-    status = "không nội thất";
-  } else if (/bàn\s*giao\s*thô|\bthô\b/i.test(lower)) {
-    status = "bàn giao thô";
-  }
-
-  // 2. Nhận diện danh sách món đồ
-  const listMatch = text.match(
-    /(?:nội\s*thất(?:\s*cơ\s*bản)?\s*[:\s-]|k\s*thiếu\s*gì\s*|gồm\s*[:\s-]|full\s*đồ\s*[:\s-]?\s*)([^\n]+)/i
-  );
-  if (listMatch) {
-    const rawList = listMatch[1].trim().replace(/^[;,\s:-]+|[;,\s.-]+$/g, "");
-    if (rawList && !/^(?:full|cơ bản|đủ đồ|vào luôn)$/i.test(rawList)) {
-      list = rawList;
-    }
-  }
-
-  if (!list) {
-    const itemsFound: string[] = [];
-    const itemPatterns = [
-      /(?:điều\s*hòa|điều\s*hoà|\bdh\b)/i,
-      /(?:nóng\s*lạnh|\bnl\b)/i,
-      /(?:máy\s*giặt|may\s*giặt)/i,
-      /(?:tủ\s*lạnh)/i,
-      /(?:thang\s*máy)/i,
-      /(?:giường)/i,
-      /(?:tủ\s*bếp|bếp)/i,
-      /(?:sofa|bàn\s*ghế)/i,
-    ];
-    for (const pat of itemPatterns) {
-      const m = text.match(pat);
-      if (m && !itemsFound.includes(m[0])) {
-        itemsFound.push(m[0]);
-      }
-    }
-    if (itemsFound.length > 0) {
-      list = itemsFound.join(", ");
-    }
-  }
-
-  return { status, list };
-}
-
-/**
  * Lớp bảo vệ hậu xử lý tất định cho từng căn trong Batch
  */
 function postProcessBatchListing(prop: any, snippetText: string): ExtractedProperty {
@@ -501,15 +446,27 @@ function postProcessBatchListing(prop: any, snippetText: string): ExtractedPrope
   }
 
   // 2b. Trích xuất nội thất tất định nếu AI chưa bóc tách đủ
+  const furn = extractFurnitureFallback(text);
   if (!prop.furniture_status || String(prop.furniture_status).trim().toLowerCase() === "null") {
-    const furn = extractFurnitureFallback(text);
     if (furn.status) {
       prop.furniture_status = furn.status;
       prop.handover_condition = furn.status;
     }
-    if (!prop.furniture_list && furn.list) {
+  }
+  if (!prop.furniture_list || String(prop.furniture_list).trim().toLowerCase() === "null") {
+    if (furn.list) {
       prop.furniture_list = furn.list;
     }
+  }
+
+  // 2c. Phục hồi điều kiện thanh toán/cọc (3c1, 1c1, tt3c1...) và hoa hồng (hh, phí mg...) nếu thiếu
+  if (!prop.lease_term_text) {
+    const leaseTerm = extractLeaseTermFallback(text);
+    if (leaseTerm) prop.lease_term_text = leaseTerm;
+  }
+  if (!prop.landlord_commission_text) {
+    const comm = extractCommissionFallback(text);
+    if (comm) prop.landlord_commission_text = comm;
   }
 
   // 3. Kiểm toán logic độc lập & xác minh bằng chứng (Grounding Auditor)
@@ -529,23 +486,8 @@ function postProcessBatchListing(prop: any, snippetText: string): ExtractedPrope
     prop.price_period = null;
   }
 
-  // 5. Chuẩn hóa tiếng Việt cho Loại hình BĐS
-  const TYPE_MAP: Record<string, string> = {
-    townhouse: "Nhà phố",
-    apartment: "Chung cư",
-    villa: "Biệt thự",
-    warehouse: "Kho bãi",
-    factory: "Nhà xưởng",
-    office: "Văn phòng",
-    retail: "Mặt bằng",
-    land: "Đất",
-    hotel: "Khách sạn",
-  };
-  if (Array.isArray(prop.property_types)) {
-    prop.property_types = prop.property_types.map((t: string) => TYPE_MAP[t] || t);
-  } else if (typeof prop.property_types === "string") {
-    prop.property_types = [TYPE_MAP[prop.property_types] || prop.property_types];
-  }
+  // 5. Chuẩn hóa tiếng Việt cho Loại hình BĐS (bao gồm viết tắt CHCC, CHDV, MBKD, LK, VP, stu, duplex...)
+  prop.property_types = normalizeVietnamesePropertyTypes(prop.property_types, text);
 
   return prop;
 }
