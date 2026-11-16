@@ -101,21 +101,21 @@ NGUYÊN TẮC CỐT LÕI - BÓC TÁCH NGUYÊN GỐC CHỮ TRONG TIN NHẮN (STRI
      * Dạng diện tích đất biệt thự có sân vườn (ví dụ 'Diện tích đất: 250m² x 5 Tầng'):
        - floor_area_m2: "250".
        - total_lease_area_m2: 250 (ghi nhận diện tích khuôn viên, TUYỆT ĐỐI KHÔNG nhân máy móc 250 x 5 = 1250).
-     * Dạng các tầng có diện tích khác nhau (ví dụ 'Tầng 1: 50m, Tầng 2: 70m, Tầng 3: 80m'):
-       - floor_area_m2: "50, 70, 80".
-       - total_lease_area_m2: 50 + 70 + 80 = 200.
+     * Dạng các tầng có diện tích khác nhau (ví dụ 'Tầng 1: 70m, Tầng 2: 90m, Tầng 3, 4, 7: 101m/sàn' hoặc 'T1: 80m, T2-5: 60m'):
+       - BẮT BUỘC liệt kê diện tích cho TỪNG TẦNG theo đúng số lượng tầng (ví dụ: floor_area_m2: "70, 90, 101, 101, 101" hoặc "80, 60, 60, 60, 60") và total_lease_area_m2 phải NHÂN ĐỦ SỐ TẦNG (70 + 90 + 101*3 = 463; 80 + 60*4 = 320), TUYỆT ĐỐI KHÔNG chỉ cộng mỗi loại diện tích một lần!
+       - Nếu dòng diện tích chung ở trên (ví dụ '80m² x 5 tầng' = 400m²) không khớp với tổng chi tiết từng tầng ở dưới (320m²): BẮT BUỘC ghi chú cảnh báo đối chiếu vào key_details.vi để nhân viên xác nhận, không tự ý chốt ngầm một cách hiểu.
      * Dạng nhà 1 tầng, căn hộ chung cư, kho bãi, mặt bằng đơn (ví dụ 'kho xưởng 800m2', 'căn hộ 65m2', 'mặt bằng 80m'):
        - total_lease_area_m2: số diện tích chung.
        - floor_area_m2: để null vì là mặt phẳng đơn không chia tầng.
 
-5. NỘI THẤT & DANH SÁCH MÓN ĐỒ (VERBATIM SPAN EXTRACTION - TRÍCH NGUYÊN GỐC TỪNG CHỮ):
-   - "furniture_status": CẮT ĐÚNG TỪ/CỤM TỪ NGUYÊN GỐC trong tin nhắn thể hiện hiện trạng nội thất (ví dụ: "đủ đồ", "full đồ", "đồ cơ bản", "đcb", "cb", "nb", "nguyên bản", "cơ bản CĐT", "cơ bản CDT", "full gỗ", "nhà trống", "bàn giao thô"...).
+5. NỘI THẤT & DANH SÁCH MÓN ĐỒ (VERBATIM SPAN EXTRACTION - TÁCH BIỆT KHỎI BỐ TRÍ PHÒNG):
+   - "furniture_status": CẮT ĐÚNG TỪ/CỤM TỪ NGUYÊN GỐC trong tin nhắn thể hiện hiện trạng nội thất (ví dụ: "đủ đồ", "full đồ", "đồ cơ bản", "đcb", "cb", "nb", "nguyên bản", "cơ bản CĐT", "cơ bản CDT", "full gỗ", "nhà trống", "Không nội thất", "bàn giao thô"...).
      * QUY TẮC NGOẠI LỆ "FULL THIẾU ...": Nếu tin ghi "full thiếu tv và đệm" -> BẮT BUỘC giữ nguyên cả cụm "full thiếu tv và đệm", KHÔNG được chỉ cắt mỗi chữ "full" rồi bỏ rơi phần thiếu!
      * NẾU TIN KHÔNG CÓ CỤM TỪ NÀO CHỈ HIỆN TRẠNG (ví dụ: chỉ liệt kê món đồ "Dh, nl, giường, bếp" hoặc không nhắc gì): BẮT BUỘC ĐỂ NULL, TUYỆT ĐỐI KHÔNG TỰ ĐẶT TỪ "chưa rõ" VÀO ĐÂY!
-   - "furniture_list": Trích xuất NGUYÊN MẪU danh sách các món đồ được liệt kê trong tin nhắn (ví dụ: "Dh, nl, giường, bếp", "ĐH NL TLẠNH BTỪ MGIẶT GTỦ", "có bếp rèm", "nb có thêm rèm, giàn phơi", "đh, nl (chưa có bếp)").
-     * Nhận diện đầy đủ các từ viết tắt thiết bị Tiếng Việt: đh/dh (điều hòa), nl (nóng lạnh), tlạnh (tủ lạnh), btừ (bếp từ), mgiặt (máy giặt), gtủ (giường tủ), tv (tivi), đệm, rèm, giàn phơi, bếp điện, hút mùi, giặt sấy, máy rửa bát.
-     * Nguồn nói rõ thiếu hoặc chưa có món nào thì ghi rõ đúng câu chữ đó (ví dụ: "thiếu tv và đệm", "chưa có bếp", "riêng tủ lạnh chưa có").
-     * Nếu tin nhắn không liệt kê món đồ nào thì để null hoặc "".
+   - "furniture_list": Trích xuất NGUYÊN MẪU danh sách các món đồ nội thất/thiết bị được liệt kê trong tin nhắn (ví dụ: "Dh, nl, giường, tủ bếp", "ĐH NL TLẠNH BTỪ MGIẶT GTỦ", "có bếp rèm", "nb có thêm rèm, giàn phơi", "đh, nl (chưa có bếp)").
+     * TÁCH BIỆT BỐ TRÍ PHÒNG KHỎI NỘI THẤT: Các thông tin chia phòng như "Gồm: 4 phòng ngủ x 3 WC, bếp", "1 phòng khách", "sân phơi" là KẾT CẤU PHÒNG, TUYỆT ĐỐI KHÔNG đưa vào "furniture_list"!
+     * NẾU TIN CHỈ GHI "Nội thất cơ bản:" mà không liệt kê tên món đồ cụ thể nào phía sau -> BẮT BUỘC ĐỂ "furniture_list": null (TUYỆT ĐỐI KHÔNG điền chữ "cơ bản:" vào furniture_list!).
+     * Khi căn nhà ghi "Không nội thất" hoặc "trống" -> "furniture_list" BẮT BUỘC ĐỂ NULL.
 
 6. GIÁ TIỀN & ĐƠN VỊ & CƠ SỞ TÍNH GIÁ (GIỮ NGUYÊN BẢN TIẾNG VIỆT):
    - "price_amount": Con số quy đổi đầy đủ (ví dụ: "60 triệu/tháng" -> 60000000, "13tr500" -> 13500000, "11tr5" -> 11500000, "8tr2" -> 8200000, "12 tr" -> 12000000, "150K / m2" -> 150000, "85k/m2" -> 85000; "55 củ/tháng" -> 55000000; "2000$" -> 2000).
@@ -133,7 +133,10 @@ NGUYÊN TẮC CỐT LÕI - BÓC TÁCH NGUYÊN GỐC CHỮ TRONG TIN NHẮN (STRI
    - TIN NHẮN ĐÍNH CHÍNH / ĐIỀU CHỈNH TRONG DÒNG THỜI GIAN:
      * Lấy giá và thông số mới nhất sau đính chính.
    - "price_currency": "VND" hoặc "USD".
-   - "price_basis": "Theo m²" (khi tính theo m2) hoặc "Tổng căn" (khi tính trọn căn).
+   - "price_basis" (PHÂN BIỆT RÕ 3 LOẠI):
+     * "per_m2": Khi giá tính theo mét vuông (ví dụ: "150K / m2", "60k/1m", "12$/m2").
+     * "per_floor": Khi giá tính theo từng tầng / từng sàn (ví dụ: "23,5 triệu/sàn/tháng", "40 Triệu/Tầng", "40 triệu/sàn", "20triệu/sàn").
+     * "total": Khi giá tính trọn cả căn / cả tòa (ví dụ: "60 triệu/tháng", "25tr/tháng").
    - "price_period": CHỈ ĐIỀN "Theo tháng", "Theo năm", hoặc "Một lần" khi tin nhắn có chữ rõ ràng chỉ kỳ hạn. Nếu không nêu rõ kỳ hạn -> BẮT BUỘC ĐỂ NULL!
    - "price_text": Sao chép NGUYÊN VĂN câu giá từ tin nhắn (bao gồm cả "có TL", "ctl", "có tl sâu", "có deal", "giá chốt", "mpdv", "hết mpdv"...).
 
@@ -234,7 +237,7 @@ ${goldenSamplesText}
                     },
                     price_basis: {
                       type: Type.STRING,
-                      enum: ["total", "per_m2"],
+                      enum: ["total", "per_m2", "per_floor"],
                     },
                     price_text: { type: Type.STRING, nullable: true },
                     lease_term_text: { type: Type.STRING, nullable: true },
@@ -407,15 +410,24 @@ function postProcessBatchListing(prop: any, snippetText: string): ExtractedPrope
       .replace(/\\r/g, "");
   }
 
-  const text = `${prop.source_text_snippet || ""} ${snippetText || ""} ${prop.key_details?.vi || ""}`.trim();
+  const text = (prop.source_text_snippet || snippetText || "").trim();
 
   // 1. Phục hồi và đồng bộ diện tích sàn đa tầng
   const multiFloorAreas = extractMultiFloorAreas(text);
   if (multiFloorAreas) {
-    if (!prop.floor_area_m2 || (multiFloorAreas.floorAreaStr.includes(",") && !String(prop.floor_area_m2).includes(","))) {
+    if (
+      multiFloorAreas.hasExplicitFloorBreakdown ||
+      !prop.floor_area_m2 ||
+      (multiFloorAreas.floorAreaStr.includes(",") && !String(prop.floor_area_m2).includes(","))
+    ) {
       prop.floor_area_m2 = multiFloorAreas.floorAreaStr;
     }
-    if (!prop.total_lease_area_m2 || prop.total_lease_area_m2 <= 0 || multiFloorAreas.floorAreaStr.includes(",")) {
+    if (
+      multiFloorAreas.hasExplicitFloorBreakdown ||
+      !prop.total_lease_area_m2 ||
+      prop.total_lease_area_m2 <= 0 ||
+      multiFloorAreas.floorAreaStr.includes(",")
+    ) {
       prop.total_lease_area_m2 = multiFloorAreas.totalArea;
     }
   }

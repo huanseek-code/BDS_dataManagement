@@ -185,7 +185,14 @@ export function InboxView({
     const propertyTypesText = rawTypes.join(", ");
 
     const rawBasis = String(listing.price_basis || "").toLowerCase().trim();
+    const rawPriceText = String(listing.price_text || listing.ai_extracted?.price_text || "").toLowerCase();
     const isPerM2 = rawBasis === "per_m2" || rawBasis.includes("m2") || rawBasis.includes("m²");
+    const isPerFloor =
+      !isPerM2 &&
+      (rawBasis === "per_floor" ||
+        rawBasis.includes("sàn") ||
+        rawBasis.includes("tầng") ||
+        /\/\s*(?:1\s*)?(?:sàn|tầng|lầu)\b/i.test(rawPriceText));
 
     // Trích xuất nội thất dự phòng nếu database chưa có sẵn
     const rawSnippetForFurn = cleanDisplayNewlines(
@@ -194,40 +201,65 @@ export function InboxView({
     let extractedStatus = getVerbatimFurnitureStatus(
       listing.key_details?.furniture_status || listing.handover_condition || listing.ai_extracted?.furniture_status
     );
-    let extractedList = listing.key_details?.furniture_list || listing.ai_extracted?.furniture_list || "";
+    let extractedList = String(listing.key_details?.furniture_list || listing.ai_extracted?.furniture_list || "")
+      .trim()
+      .replace(/^(?:nội\s*thất|đồ\s*đạc|thiết\s*bị)?(?:\s*(?:cơ\s*bản|full|đầy\s*đủ|đủ\s*đồ|nguyên\s*bản))*\s*[:=-]+\s*/i, "")
+      .replace(/^[;,\s:=-]+|[;,\s:.=-]+$/g, "")
+      .trim();
+
+    if (/^(?:nội\s*thất\s*cơ\s*bản|đồ\s*cơ\s*bản|cơ\s*bản|đcb|cb|full|full\s*đồ|đủ\s*đồ|nguyên\s*bản|nb|không\s*nội\s*thất|không\s*đồ|nhà\s*trống|trống|bàn\s*giao\s*thô|thô|vào\s*luôn|chưa\s*rõ|null)[:.\s]*$/i.test(extractedList)) {
+      extractedList = "";
+    }
 
     if (!extractedStatus && rawSnippetForFurn) {
       const lower = rawSnippetForFurn.toLowerCase();
-      if (/full\s*(?:đồ|nội\s*thất|toàn\s*bộ)|đầy\s*đủ\s*nội\s*thất|nội\s*thất\s*:\s*full|\bfull\b|đủ\s*đồ/i.test(lower)) {
+      if (/không\s*(?:có\s*)?(?:nội\s*thất|đồ)|nhà\s*trống|trống\s*đồ|nội\s*thất\s*:\s*trống/i.test(lower)) {
+        extractedStatus = "Không nội thất";
+      } else if (/full\s*(?:đồ|nội\s*thất|toàn\s*bộ)|đầy\s*đủ\s*nội\s*thất|nội\s*thất\s*:\s*full|\bfull\b|đủ\s*đồ/i.test(lower)) {
         extractedStatus = "full đồ";
-      } else if (/nội\s*thất\s*cơ\s*bản|đồ\s*cơ\s*bản|\bcơ\s*bản\b/i.test(lower)) {
+      } else if (/nội\s*thất\s*cơ\s*bản|đồ\s*cơ\s*bản|\bđcb\b|\bcơ\s*bản\b/i.test(lower)) {
         extractedStatus = "cơ bản";
-      } else if (/không\s*(?:có\s*)?đồ|nhà\s*trống|trống\s*đồ/i.test(lower)) {
-        extractedStatus = "không nội thất";
       } else if (/bàn\s*giao\s*thô|\bthô\b/i.test(lower)) {
         extractedStatus = "bàn giao thô";
       }
     }
 
-    if (!extractedList && rawSnippetForFurn) {
-      const listMatch = rawSnippetForFurn.match(/(?:nội\s*thất(?:\s*cơ\s*bản)?\s*[:\s-]|k\s*thiếu\s*gì\s*|gồm\s*[:\s-]|full\s*đồ\s*[:\s-]?\s*)([^\n]+)/i);
+    const isUnfurnishedStatus =
+      extractedStatus && /không\s*(?:có\s*)?(?:nội\s*thất|đồ)|nhà\s*trống|^trống$|bàn\s*giao\s*thô|^thô$/i.test(extractedStatus);
+
+    if (isUnfurnishedStatus) {
+      extractedList = "";
+    } else if (!extractedList && rawSnippetForFurn) {
+      const listMatch = rawSnippetForFurn.match(
+        /(?:(?:nội\s*thất|thiết\s*bị|đồ\s*đạc)(?:\s+(?:cơ\s*bản|full|đầy\s*đủ|đủ\s*đồ|nguyên\s*bản|cđt|cdt|gồm))*|\bk\s*thiếu\s*gì|\bnb\s*có\s*thêm|\bfull\s*đồ)\s*[:=-]\s*([^\n]+)/i
+      );
       if (listMatch) {
-        const rawL = listMatch[1].trim().replace(/^[;,\s:-]+|[;,\s.-]+$/g, "");
-        if (rawL && !/^(?:full|cơ bản|đủ đồ|vào luôn)$/i.test(rawL)) {
+        const rawL = listMatch[1]
+          .trim()
+          .replace(/^[;,\s:=-]+|[;,\s:.=-]+$/g, "")
+          .trim();
+        if (
+          rawL &&
+          !/^(?:nội\s*thất\s*cơ\s*bản|đồ\s*cơ\s*bản|cơ\s*bản|đcb|cb|full|full\s*đồ|đủ\s*đồ|nguyên\s*bản|nb|không\s*nội\s*thất|trống|vào\s*luôn)[:.\s]*$/i.test(
+            rawL
+          )
+        ) {
           extractedList = rawL;
         }
       }
       if (!extractedList) {
         const itemsFound: string[] = [];
         const itemPatterns = [
-          /(?:điều\s*hòa|điều\s*hoà|\bdh\b)/i,
+          /(?:điều\s*hòa|điều\s*hoà|\bđh\b|\bdh\b)/i,
           /(?:nóng\s*lạnh|\bnl\b)/i,
-          /(?:máy\s*giặt|may\s*giặt)/i,
-          /(?:tủ\s*lạnh)/i,
+          /(?:máy\s*giặt|may\s*giặt|\bmgiặt\b)/i,
+          /(?:tủ\s*lạnh|\btlạnh\b)/i,
+          /(?:bếp\s*từ|\bbtừ\b)/i,
+          /(?:hút\s*mùi)/i,
           /(?:thang\s*máy)/i,
-          /(?:giường)/i,
-          /(?:tủ\s*bếp|bếp)/i,
-          /(?:sofa|bàn\s*ghế)/i,
+          /(?:giường\s*tủ|\bgtủ\b|giường)/i,
+          /(?:tủ\s*bếp)/i,
+          /(?:sofa|sopha|bàn\s*ghế)/i,
         ];
         for (const pat of itemPatterns) {
           const m = rawSnippetForFurn.match(pat);
@@ -241,6 +273,21 @@ export function InboxView({
       }
     }
 
+    // Lọc bỏ các cụm bố trí phòng nếu lọt vào extractedList ("4 phòng ngủ", "3 WC", "bếp")
+    if (extractedList) {
+      const validTokens = extractedList
+        .split(/[,;\n]+/)
+        .map((t) => t.trim().replace(/^[;,\s:=-]+|[;,\s:.=-]+$/g, ""))
+        .filter(Boolean)
+        .filter(
+          (tok) =>
+            !/^(?:\d+\s*)?(?:phòng\s*ngủ|pn|ngủ|wc|vs|vệ\s*sinh|phòng\s*khách|pk|khách|phòng\s*thờ|sân\s*phơi|bếp|p\.?\s*bếp)(?:\s*[x×+&,]\s*(?:\d+\s*)?(?:phòng\s*ngủ|pn|ngủ|wc|vs|vệ\s*sinh|phòng\s*khách|pk|khách|bếp|sân\s*phơi))*$/i.test(
+              tok
+            )
+        );
+      extractedList = validTokens.join(", ");
+    }
+
     return {
       province: listing.province || "",
       address_text: listing.address_text || "",
@@ -250,8 +297,8 @@ export function InboxView({
       floor_area_m2: listing.floor_area_m2 || "",
       price_amount: listing.price_amount || "",
       price_currency: listing.price_currency || "VND",
-      price_basis: isPerM2 ? "per_m2" : "total",
-      price_basis_text: isPerM2 ? "Theo m²" : "Tổng căn",
+      price_basis: isPerM2 ? "per_m2" : isPerFloor ? "per_floor" : "total",
+      price_basis_text: isPerM2 ? "Theo m²" : isPerFloor ? "Theo tầng/sàn" : "Tổng căn",
       price_period:
         listing.price_period === "monthly" ? "month" : (listing.price_period || ""),
       price_period_text:
@@ -295,9 +342,16 @@ export function InboxView({
 
     setIsSubmitting(true);
     try {
-      const isPerM2 = formState.price_basis === "per_m2" ||
-        String(formState.price_basis_text || "").toLowerCase().includes("m2") ||
-        String(formState.price_basis_text || "").toLowerCase().includes("m²");
+      const basisTextLow = String(formState.price_basis_text || "").toLowerCase();
+      const isPerM2 =
+        formState.price_basis === "per_m2" ||
+        basisTextLow.includes("m2") ||
+        basisTextLow.includes("m²");
+      const isPerFloor =
+        !isPerM2 &&
+        (formState.price_basis === "per_floor" ||
+          basisTextLow.includes("sàn") ||
+          basisTextLow.includes("tầng"));
 
       const res = await fetch("/api/inbox/action", {
         method: "POST",
@@ -311,7 +365,7 @@ export function InboxView({
             total_lease_area_m2: formState.total_lease_area_m2 ? Number(formState.total_lease_area_m2) : null,
             floor_area_m2: formState.floor_area_m2 ? String(formState.floor_area_m2).trim() : null,
             price_amount: formState.price_amount ? Number(formState.price_amount) : null,
-            price_basis: isPerM2 ? "per_m2" : "total",
+            price_basis: isPerM2 ? "per_m2" : isPerFloor ? "per_floor" : "total",
             price_period: formState.price_period || formState.price_period_text || null,
             price_text: formState.price_text || null,
             attachments: formState.attachments || [],
@@ -939,17 +993,26 @@ export function InboxView({
                           </label>
                           <input
                             type="text"
-                            value={formState.price_basis_text ?? (formState.price_basis === "per_m2" ? "Theo m²" : "Tổng căn")}
+                            value={
+                              formState.price_basis_text ??
+                              (formState.price_basis === "per_m2"
+                                ? "Theo m²"
+                                : formState.price_basis === "per_floor"
+                                ? "Theo tầng/sàn"
+                                : "Tổng căn")
+                            }
                             onChange={(e) => {
                               const val = e.target.value;
-                              const isPerM2 = val.toLowerCase().includes("m2") || val.toLowerCase().includes("m²");
+                              const low = val.toLowerCase();
+                              const isPerM2 = low.includes("m2") || low.includes("m²");
+                              const isPerFloor = !isPerM2 && (low.includes("sàn") || low.includes("tầng"));
                               setFormState({
                                 ...formState,
                                 price_basis_text: val,
-                                price_basis: isPerM2 ? "per_m2" : "total",
+                                price_basis: isPerM2 ? "per_m2" : isPerFloor ? "per_floor" : "total",
                               });
                             }}
-                            placeholder="Tổng căn / Theo m²"
+                            placeholder="Tổng căn / Theo tầng/sàn / Theo m²"
                             className="w-full px-2 py-1 text-xs rounded border border-slate-200 bg-white text-slate-700 font-medium focus:ring-2 focus:ring-sky-500"
                           />
                         </div>

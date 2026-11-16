@@ -59,10 +59,13 @@ export function formatPrice(
     }).format(amount);
   }
 
-  // Thêm hậu tố theo m2 và chu kỳ
+  // Thêm hậu tố theo m2, theo tầng/sàn và chu kỳ
   let suffix = "";
-  if (priceBasis === "per_m2") {
+  const basisLow = String(priceBasis || "").toLowerCase();
+  if (basisLow === "per_m2" || basisLow.includes("m2") || basisLow.includes("m²")) {
     suffix += locale === "zh" ? "/㎡" : "/m²";
+  } else if (basisLow === "per_floor" || basisLow.includes("sàn") || basisLow.includes("tầng")) {
+    suffix += locale === "zh" ? "/层" : locale === "en" ? "/floor" : "/sàn";
   }
 
   const periodNormalized = pricePeriod === "monthly" ? "month" : pricePeriod;

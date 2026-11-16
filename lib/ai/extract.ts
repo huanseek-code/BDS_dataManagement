@@ -402,7 +402,7 @@ ${rawText}`;
  * Ngăn chặn tuyệt đối tình trạng Gemini bỏ sót giá, bỏ sót diện tích hoặc quên điều kiện cấm.
  */
 function postProcessListing(prop: ExtractedProperty, fullText: string): ExtractedProperty {
-  const text = `${prop.source_text_snippet || ""} ${fullText || ""}`.trim();
+  const text = (prop.source_text_snippet || fullText || "").trim();
 
   // 1. Trích xuất nội thất, điều kiện thuê, hoa hồng tất định nếu AI chưa bóc tách đủ
   const furn = extractFurnitureFallback(text);
@@ -452,10 +452,19 @@ function postProcessListing(prop: ExtractedProperty, fullText: string): Extracte
   // 4. Fallback diện tích đa tầng & diện tích từng tầng
   const multiFloorAreas = extractMultiFloorAreas(text);
   if (multiFloorAreas) {
-    if (!prop.floor_area_m2 || (multiFloorAreas.floorAreaStr.includes(",") && !String(prop.floor_area_m2).includes(","))) {
+    if (
+      multiFloorAreas.hasExplicitFloorBreakdown ||
+      !prop.floor_area_m2 ||
+      (multiFloorAreas.floorAreaStr.includes(",") && !String(prop.floor_area_m2).includes(","))
+    ) {
       prop.floor_area_m2 = multiFloorAreas.floorAreaStr;
     }
-    if (!prop.total_lease_area_m2 || prop.total_lease_area_m2 <= 0 || multiFloorAreas.floorAreaStr.includes(",")) {
+    if (
+      multiFloorAreas.hasExplicitFloorBreakdown ||
+      !prop.total_lease_area_m2 ||
+      prop.total_lease_area_m2 <= 0 ||
+      multiFloorAreas.floorAreaStr.includes(",")
+    ) {
       prop.total_lease_area_m2 = multiFloorAreas.totalArea;
     }
   }
