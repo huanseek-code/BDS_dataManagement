@@ -748,7 +748,17 @@ export function sanitizeFurnitureList(
     return null;
   }
 
-  // Nếu trạng thái đã khẳng định là Không nội thất / Nhà trống / Thô (và không có ngoại lệ "có...")
+  // Nếu chuỗi thực chất là câu mô tả đường/ngõ/giá/diện tích/công năng ở dòng dưới bị trượt vào
+  if (
+    /(?:giá[\s_]*thuê|đường\s*rộng|ô\s*tô\s*đi\s*lại|ô\s*tô\s*tránh|phù\s*hợp\s*:|diện\s*tích\s*:|mặt\s*tiền\s*:|liên\s*hệ\s*:)/i.test(
+      cleaned
+    ) &&
+    !/(?:điều\s*h[oò]a|\bđh\b|\bdh\b|nóng\s*lạnh|\bnl\b|tủ\s*lạnh|\btlạnh\b|máy\s*giặt|\bmgiặt\b|tủ\s*bếp|bếp\s*từ|\bbtừ\b|giường|\bgtủ\b|sofa|rèm|đệm)/i.test(
+      cleaned
+    )
+  ) {
+    return null;
+  }
   const statusLow = String(furnitureStatus || "").toLowerCase();
   if (
     /(?:không\s*(?:có\s*)?(?:nội\s*thất|đồ)|nhà\s*trống|^trống$|bàn\s*giao\s*thô|^thô$)/i.test(statusLow) &&
@@ -1010,15 +1020,18 @@ export function extractFurnitureFallback(text: string): {
     return { status, list: null };
   }
 
-  // 2. Nhận diện danh sách món đồ (KHÔNG bắt chữ "Gồm:" đứng độc lập vì đó là bố trí phòng, KHÔNG backtrack chữ "cơ bản:")
-  const listMatch = text.match(
-    /(?:(?:nội\s*thất|thiết\s*bị|đồ\s*đạc)(?:\s+(?:cơ\s*bản|full|đầy\s*đủ|đủ\s*đồ|nguyên\s*bản|cđt|cdt|gồm))*|\bk\s*thiếu\s*gì|\bnb\s*có\s*thêm|\bfull\s*đồ)\s*[:=-]\s*([^\n]+)/i
+  // 2. Nhận diện danh sách món đồ trên cùng dòng (chỉ dùng [ \t]* để TUYỆT ĐỐI KHÔNG nhảy xuống dòng dưới khi sau dấu ':' bị bỏ trống)
+  const hasExplicitEmptyFurnitureHeader = /(?:nội\s*thất|thiết\s*bị|đồ\s*đạc)(?:[ \t]+(?:cơ\s*bản|full|đầy\s*đủ|đủ\s*đồ|nguyên\s*bản|cđt|cdt))*[ \t]*[:=-][ \t]*(?:\r?\n|$)/i.test(
+    text
   );
-  if (listMatch) {
+  const listMatch = text.match(
+    /(?:(?:nội\s*thất|thiết\s*bị|đồ\s*đạc)(?:[ \t]+(?:cơ\s*bản|full|đầy\s*đủ|đủ\s*đồ|nguyên\s*bản|cđt|cdt|gồm))*|\bk[ \t]+thiếu[ \t]+gì|\bnb[ \t]+có[ \t]+thêm|\bfull[ \t]+đồ)[ \t]*[:=-]?[ \t]*([^\r\n]+)/i
+  );
+  if (listMatch && !hasExplicitEmptyFurnitureHeader) {
     list = sanitizeFurnitureList(listMatch[1], status);
   }
 
-  if (!list) {
+  if (!list && !hasExplicitEmptyFurnitureHeader) {
     const itemsFound: string[] = [];
     const itemPatterns: [RegExp, string | null][] = [
       [/(?:điều\s*hòa\s*âm\s*trần|điều\s*hoà\s*âm\s*trần|đh\s*âm\s*trần|dh\s*âm\s*trần|điều\s*hòa|điều\s*hoà|\bđh\b|\bdh\b)/i, null],
@@ -1029,7 +1042,6 @@ export function extractFurnitureFallback(text: string): {
       [/(?:bếp\s*từ|\bbtừ\b)/i, null],
       [/(?:bếp\s*điện)/i, null],
       [/(?:hút\s*mùi)/i, null],
-      [/(?:thang\s*máy)/i, null],
       [/(?:giường\s*tủ|\bgtủ\b|giường)/i, null],
       [/(?:tủ\s*quần\s*áo)/i, null],
       [/(?:đệm)/i, null],

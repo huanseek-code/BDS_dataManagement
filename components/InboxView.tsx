@@ -230,10 +230,14 @@ export function InboxView({
     if (isUnfurnishedStatus) {
       extractedList = "";
     } else if (!extractedList && rawSnippetForFurn) {
+      const hasExplicitEmptyFurnitureHeader =
+        /(?:nội\s*thất|thiết\s*bị|đồ\s*đạc)(?:[ \t]+(?:cơ\s*bản|full|đầy\s*đủ|đủ\s*đồ|nguyên\s*bản|cđt|cdt))*[ \t]*[:=-][ \t]*(?:\r?\n|$)/i.test(
+          rawSnippetForFurn
+        );
       const listMatch = rawSnippetForFurn.match(
-        /(?:(?:nội\s*thất|thiết\s*bị|đồ\s*đạc)(?:\s+(?:cơ\s*bản|full|đầy\s*đủ|đủ\s*đồ|nguyên\s*bản|cđt|cdt|gồm))*|\bk\s*thiếu\s*gì|\bnb\s*có\s*thêm|\bfull\s*đồ)\s*[:=-]\s*([^\n]+)/i
+        /(?:(?:nội\s*thất|thiết\s*bị|đồ\s*đạc)(?:[ \t]+(?:cơ\s*bản|full|đầy\s*đủ|đủ\s*đồ|nguyên\s*bản|cđt|cdt|gồm))*|\bk[ \t]+thiếu[ \t]+gì|\bnb[ \t]+có[ \t]+thêm|\bfull[ \t]+đồ)[ \t]*[:=-][ \t]*([^\r\n]+)/i
       );
-      if (listMatch) {
+      if (listMatch && !hasExplicitEmptyFurnitureHeader) {
         const rawL = listMatch[1]
           .trim()
           .replace(/^[;,\s:=-]+|[;,\s:.=-]+$/g, "")
@@ -247,7 +251,7 @@ export function InboxView({
           extractedList = rawL;
         }
       }
-      if (!extractedList) {
+      if (!extractedList && !hasExplicitEmptyFurnitureHeader) {
         const itemsFound: string[] = [];
         const itemPatterns = [
           /(?:điều\s*hòa|điều\s*hoà|\bđh\b|\bdh\b)/i,
@@ -256,7 +260,6 @@ export function InboxView({
           /(?:tủ\s*lạnh|\btlạnh\b)/i,
           /(?:bếp\s*từ|\bbtừ\b)/i,
           /(?:hút\s*mùi)/i,
-          /(?:thang\s*máy)/i,
           /(?:giường\s*tủ|\bgtủ\b|giường)/i,
           /(?:tủ\s*bếp)/i,
           /(?:sofa|sopha|bàn\s*ghế)/i,
