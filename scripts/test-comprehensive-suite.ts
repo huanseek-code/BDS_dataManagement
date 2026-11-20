@@ -82,15 +82,7 @@ function runPipeline(rawText: string, initialProp: Record<string, any> = {}) {
     }
   }
 
-  // 3. Furniture, lease term, commission fallback
-  const furn = extractFurnitureFallback(rawText);
-  if (!prop.furniture_status) {
-    prop.furniture_status = furn.status;
-    prop.handover_condition = furn.status;
-  }
-  if (!prop.furniture_list) {
-    prop.furniture_list = furn.list;
-  }
+  // 3. Lease term & commission fallback (NOTE: Furniture is AI-first + Validator only; no Regex overwrite!)
   if (!prop.lease_term_text) {
     prop.lease_term_text = extractLeaseTermFallback(rawText);
   }
@@ -98,7 +90,7 @@ function runPipeline(rawText: string, initialProp: Record<string, any> = {}) {
     prop.landlord_commission_text = extractCommissionFallback(rawText);
   }
 
-  // 4. Audit & Verify
+  // 4. Audit & Verify (Validator gatekeeper)
   const { prop: audited, audit } = auditAndVerifyExtractedProperty(prop, rawText);
   audited.key_details.grounding_audit = audit;
   audited.key_details = enrichKeyDetailsWithStructureAndSuitability(audited.key_details, rawText);
@@ -127,6 +119,7 @@ const TEST_CASES: TestCase[] = [
 🛋️Nội thất cơ bản : Điều hòa,nóng lạnh,tủ bếp....
 -phù hợp hộ gia đình,kd online,văn phòng cty,kho.TT dạy học.....
 🚕Giá_Thuê: 22 triệu/tháng (có TL)`,
+    initialProp: { furniture_status: "Nội thất cơ bản", furniture_list: "Điều hòa, nóng lạnh, tủ bếp" },
     verify: (res) => {
       assert.equal(res.floor_area_m2, "55");
       assert.equal(res.total_lease_area_m2, 275);
@@ -279,6 +272,7 @@ hh 5 tr`,
 🚗 Đường rộng 11m, ô tô đi lại và đỗ trước cửa thuận tiện
 💼 Phù hợp: Văn phòng cty, spa, phòng khám, trung tâm đào tạo
 💰Giá_Thuê: 33 Tr/tháng`,
+    initialProp: { furniture_status: "Nội thất cơ bản", furniture_list: "cơ bản:" },
     verify: (res) => {
       assert.match(res.furniture_status || "", /cơ bản/i);
       assert.equal(res.furniture_list, null);
@@ -309,6 +303,7 @@ Gồm: 4 phòng ngủ x 3 WC, bếp
 - Nội thất : full thiếu tv và đệm
 - Giá: 11tr5 - nhận nhà ngay
 - Hình thức: 6 cọc 1 hoặc 3 cọc 2`,
+    initialProp: { furniture_status: "full thiếu tv và đệm" },
     verify: (res) => {
       assert.equal(res.price_amount, 11500000);
       assert.equal(res.furniture_status, "full thiếu tv và đệm");
@@ -322,6 +317,7 @@ Gồm: 4 phòng ngủ x 3 WC, bếp
     rawText: `NHÀ RIÊNG MỚI CỨNG NGÕ 32x NGUYỄN TRÃI, DT 45m2 x 4 tầng
 ♻️ Thiết bị ĐH NL TLẠNH BTỪ MGIẶT GTỦ
 💰Giá thuê : 8tr/tháng ( đóng 3 cọc 10tr )`,
+    initialProp: { furniture_list: "ĐH, NL, TLẠNH, BTỪ, MGIẶT, GTỦ" },
     verify: (res) => {
       assert.equal(res.price_amount, 8000000);
       assert.match(res.furniture_list || "", /TLẠNH/i);
@@ -378,6 +374,51 @@ Gồm: 4 phòng ngủ x 3 WC, bếp
       assert.match(res.key_details.vi, /CHDV/i);
       assert.match(res.key_details.vi, /ko cho tq/i);
       assert.match(res.landlord_commission_text || "", /1 tháng nếu hđ 2 năm/i);
+    },
+  },
+  {
+    id: "TC16",
+    group: "Nội thất & Bố trí phòng (Validator Gatekeeper)",
+    title: "Tuyệt đối không bắt nhầm 'thô' trong 'thông sàn' thành 'bàn giao thô' (56 – 58 Hà Trung)",
+    rawText: `56 – 58 HÀ TRUNG – HOÀN KIẾM
+- Diện tích: 90m2 x 8 tầng + hầm
+- Mặt tiền : 8m
+- Giá thuê : 200tr/tháng
+- HH : 50%
+- Thông tin khác : riêng biệt, t1,2 thông sàn, kd mọi mô hình, tt3t, cọc 1, thang máy, vào luôn`,
+    initialProp: { furniture_status: "bàn giao thô" },
+    verify: (res) => {
+      assert.equal(res.furniture_status, null);
+      assert.equal(res.furniture_list, null);
+      assert.equal(res.total_lease_area_m2, 720);
+    },
+  },
+  {
+    id: "TC17",
+    group: "Nội thất & Bố trí phòng (Validator Gatekeeper)",
+    title: "Bảo tồn nguyên cụm 'Full đồ' và bác bỏ giá + ngày vào ở ('13tr. 1/12 vào') khỏi furniture_list (HD Mon Hàm Nghi)",
+    rawText: `Dự án : HD Mon Hàm Nghi
+61m2 2PN 2VS.Full đồ 13tr. 1/12 vào
+🌹 Phí 50%`,
+    initialProp: { furniture_status: "Full", furniture_list: "13tr. 1/12 vào" },
+    verify: (res) => {
+      assert.equal(res.furniture_status, "Full đồ");
+      assert.equal(res.furniture_list, null);
+      assert.equal(res.price_amount, 13000000);
+    },
+  },
+  {
+    id: "TC18",
+    group: "Nội thất & Bố trí phòng (Validator Gatekeeper)",
+    title: "Bảo tồn 'full đồ' và bác bỏ '19tr, vào luôn' / '22tr. Vào luôn' khỏi furniture_list (Dcapitale & Sky Lake)",
+    rawText: `Dcapitale Trần Duy Hưng C1
+70m2 2 ngủ 2wc full đồ 19tr, vào luôn
+🌹Phí 1th`,
+    initialProp: { furniture_status: "full", furniture_list: "19tr, vào luôn" },
+    verify: (res) => {
+      assert.equal(res.furniture_status, "full đồ");
+      assert.equal(res.furniture_list, null);
+      assert.equal(res.price_amount, 19000000);
     },
   },
 ];

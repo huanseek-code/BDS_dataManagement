@@ -403,6 +403,22 @@ export function verifyVerbatimSpan(extractedPhrase: string | null | undefined, r
   const lower = trimmed.toLowerCase();
   const rawLower = rawText.toLowerCase();
 
+  // Nếu AI trả về chuỗi cụt "Full" / "full" trong khi tin nhắn gốc ghi rõ "Full đồ", "full nội thất"... thì khôi phục cụm đầy đủ
+  if (/^full$/i.test(trimmed)) {
+    const fullPhraseMatch = rawText.match(/(?:full\s*(?:đồ|nội\s*thất|gỗ|toàn\s*bộ))/i);
+    if (fullPhraseMatch) {
+      return fullPhraseMatch[0].trim();
+    }
+  }
+
+  // Tuyệt đối kiểm tra chữ "thô" trước `rawLower.includes(lower)` để không bao giờ khớp nhầm chữ "thô" nằm trong "thông sàn", "thông tin"
+  if (lower.includes("thô")) {
+    if (/(?:bàn\s*giao\s*thô|nhà\s*thô|xây\s*thô|nội\s*thất\s*:\s*thô)(?![a-zA-Zà-ỹÀ-Ỹ])/i.test(rawLower)) {
+      return trimmed;
+    }
+    return null;
+  }
+
   // Kiểm tra xem chuỗi có xuất hiện trong tin nhắn gốc không (bỏ qua hoa thường)
   if (rawLower.includes(lower)) {
     return trimmed;
@@ -435,6 +451,10 @@ export function verifyVerbatimSpan(extractedPhrase: string | null | undefined, r
 
   // Nhận diện hiện trạng nội thất tương đương (full đồ, đcb, cb, cơ bản, nb, nguyên bản, thô, không đồ)
   if (lower.includes("full") || lower.includes("đủ đồ") || lower.includes("đầy đủ")) {
+    const fullPhraseMatch = rawText.match(/(?:full\s*(?:đồ|nội\s*thất|gỗ|toàn\s*bộ)|đầy\s*đủ\s*nội\s*thất|đủ\s*đồ)/i);
+    if (fullPhraseMatch && /^full$/i.test(trimmed)) {
+      return fullPhraseMatch[0].trim();
+    }
     if (/(?:^|[^\wà-ỹ])(?:full|đủ\s*đồ|đầy\s*đủ)(?:[^\wà-ỹ]|$)/i.test(rawLower)) return trimmed;
   }
   if (lower.includes("cơ bản") || lower === "đcb" || lower === "cb") {
@@ -444,10 +464,14 @@ export function verifyVerbatimSpan(extractedPhrase: string | null | undefined, r
     if (/(?:^|[^\wà-ỹ])(?:nguyên\s*bản|nb)(?:[^\wà-ỹ]|$)/i.test(rawLower)) return trimmed;
   }
   if (lower.includes("thô")) {
-    if (/thô/i.test(rawLower)) return trimmed;
+    // Tuyệt đối không dùng /thô/i hay \bthô\b vì trong JS \b bắt nhầm chữ "thô" trong "thông sàn", "thông tin", "giao thông"!
+    if (/(?:bàn\s*giao\s*thô|nhà\s*thô|xây\s*thô|nội\s*thất\s*:\s*thô)(?![a-zA-Zà-ỹÀ-Ỹ])/i.test(rawLower)) {
+      return trimmed;
+    }
+    return null;
   }
   if (lower.includes("không") || lower.includes("trống")) {
-    if (/không\s*đồ|nhà\s*trống|trống\s*đồ/i.test(rawLower)) return trimmed;
+    if (/không\s*(?:có\s*)?(?:nội\s*thất|đồ)|nhà\s*trống|trống\s*đồ|nội\s*thất\s*:\s*trống/i.test(rawLower)) return trimmed;
   }
 
   // Đây là chữ AI tự sáng tạo không có trong tin gốc -> Loại bỏ về null!
@@ -785,6 +809,23 @@ export function sanitizeFurnitureList(
       ) {
         return false;
       }
+      // Loại bỏ token là giá tiền hoặc ngày nhận nhà ("13tr", "19tr", "22tr", "1/12 vào", "vào luôn", "nhận nhà ngay")
+      if (
+        /(?:^\d+(?:[.,]\d+)?\s*(?:tr|triệu|củ|tỷ|k|usd|\$)\b|\b\d{1,2}\/\d{1,2}(?:\s*vào)?\b|^(?:vào\s*luôn|vào\s*ngay|ở\s*luôn|nhận\s*nhà(?:\s*ngay)?|bàn\s*giao\s*ngay)$)/i.test(
+          token
+        )
+      ) {
+        return false;
+      }
+      // Nếu token chứa cả giá tiền + ngày vào kiểu "13tr. 1/12 vào" hoặc "22tr. Vào luôn" mà không chứa tên đồ vật thực sự
+      if (
+        /\b\d+(?:[.,]\d+)?\s*(?:tr|triệu|củ|tỷ)\b/i.test(token) &&
+        !/(?:điều\s*h[oò]a|\bđh\b|\bdh\b|nóng\s*lạnh|\bnl\b|tủ\s*lạnh|\btlạnh\b|máy\s*giặt|\bmgiặt\b|tủ\s*bếp|bếp\s*từ|\bbtừ\b|giường|\bgtủ\b|sofa|rèm|đệm|tivi|\btv\b)/i.test(
+          token
+        )
+      ) {
+        return false;
+      }
       // Chữ "bếp" hoặc "p bếp" hoặc "phòng bếp" đứng một mình là khu bếp (không phải tủ bếp / bếp từ / bếp điện / bếp rèm)
       if (/^(?:\d+\s*)?(?:p\.?\s*bếp|phòng\s*bếp|khu\s*bếp|bếp)$/i.test(token)) {
         return false;
@@ -889,13 +930,13 @@ export function auditAndVerifyExtractedProperty(
     }
   }
 
-  // 3. Kiểm toán Nội thất nguyên bản & Tách cấu trúc phòng khỏi nội thất
+  // 3. Kiểm toán Nội thất nguyên bản (Validator gác cổng: Nếu không khớp văn bản gốc thì loại bỏ về null)
   if (text.length > 0) {
     const verifiedStatus = verifyVerbatimSpan(prop.furniture_status, text);
-    prop.furniture_status = verifiedStatus || prop.furniture_status || null;
+    prop.furniture_status = verifiedStatus;
 
     const verifiedList = verifyVerbatimSpan(prop.furniture_list, text);
-    prop.furniture_list = sanitizeFurnitureList(verifiedList || prop.furniture_list, prop.furniture_status);
+    prop.furniture_list = sanitizeFurnitureList(verifiedList, prop.furniture_status);
   } else {
     prop.furniture_list = sanitizeFurnitureList(prop.furniture_list, prop.furniture_status);
   }
@@ -1011,7 +1052,7 @@ export function extractFurnitureFallback(text: string): {
   } else if (/(?:^|[^\wà-ỹ])(?:nguyên\s*bản\s*(?:cđt|cdt)?|\bnb\b)(?:[^\wà-ỹ]|$)/i.test(text)) {
     const m = text.match(/(?:nguyên\s*bản\s*(?:cđt|cdt)?|\bnb\b)/i);
     status = m ? m[0].trim() : "nguyên bản";
-  } else if (/bàn\s*giao\s*thô|\bthô\b/i.test(text)) {
+  } else if (/(?:bàn\s*giao\s*thô|nhà\s*thô|xây\s*thô|nội\s*thất\s*:\s*thô)(?![a-zA-Zà-ỹÀ-Ỹ])/i.test(text)) {
     status = "bàn giao thô";
   }
 
@@ -1020,12 +1061,12 @@ export function extractFurnitureFallback(text: string): {
     return { status, list: null };
   }
 
-  // 2. Nhận diện danh sách món đồ trên cùng dòng (chỉ dùng [ \t]* để TUYỆT ĐỐI KHÔNG nhảy xuống dòng dưới khi sau dấu ':' bị bỏ trống)
+  // 2. Nhận diện danh sách món đồ trên cùng dòng (BẮT BUỘC phải có dấu ':' hoặc '-' sau tiêu đề nội thất/thiết bị)
   const hasExplicitEmptyFurnitureHeader = /(?:nội\s*thất|thiết\s*bị|đồ\s*đạc)(?:[ \t]+(?:cơ\s*bản|full|đầy\s*đủ|đủ\s*đồ|nguyên\s*bản|cđt|cdt))*[ \t]*[:=-][ \t]*(?:\r?\n|$)/i.test(
     text
   );
   const listMatch = text.match(
-    /(?:(?:nội\s*thất|thiết\s*bị|đồ\s*đạc)(?:[ \t]+(?:cơ\s*bản|full|đầy\s*đủ|đủ\s*đồ|nguyên\s*bản|cđt|cdt|gồm))*|\bk[ \t]+thiếu[ \t]+gì|\bnb[ \t]+có[ \t]+thêm|\bfull[ \t]+đồ)[ \t]*[:=-]?[ \t]*([^\r\n]+)/i
+    /(?:(?:nội\s*thất|thiết\s*bị|đồ\s*đạc)(?:[ \t]+(?:cơ\s*bản|full|đầy\s*đủ|đủ\s*đồ|nguyên\s*bản|cđt|cdt|gồm))*[ \t]*[:=-]|\bk[ \t]+thiếu[ \t]+gì|\bnb[ \t]+có[ \t]+thêm)[ \t]*([^\r\n]+)/i
   );
   if (listMatch && !hasExplicitEmptyFurnitureHeader) {
     list = sanitizeFurnitureList(listMatch[1], status);

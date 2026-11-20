@@ -194,13 +194,33 @@ export function InboxView({
         rawBasis.includes("tầng") ||
         /\/\s*(?:1\s*)?(?:sàn|tầng|lầu)\b/i.test(rawPriceText));
 
-    // Trích xuất nội thất dự phòng nếu database chưa có sẵn
+    // Lấy kết quả nội thất từ AI (TUYỆT ĐỐI KHÔNG dùng Regex điền đè khi AI đã trả về null/rỗng)
+    // Chỉ chạy bộ lọc gác cổng (Validator) để loại bỏ dữ liệu rác nếu có
     const rawSnippetForFurn = cleanDisplayNewlines(
       listing.location_note || listing.ai_extracted?.source_text_snippet || listing.key_details?.vi || listing.submission?.raw_text || ""
     );
     let extractedStatus = getVerbatimFurnitureStatus(
       listing.key_details?.furniture_status || listing.handover_condition || listing.ai_extracted?.furniture_status
     );
+
+    // Gác cổng 1: Nếu status là "bàn giao thô" nhưng tin gốc không có chữ "bàn giao thô / nhà thô / xây thô" (mà chỉ có "thông sàn") -> loại bỏ
+    if (
+      extractedStatus &&
+      /thô/i.test(extractedStatus) &&
+      rawSnippetForFurn &&
+      !/(?:bàn\s*giao\s*thô|nhà\s*thô|xây\s*thô|nội\s*thất\s*:\s*thô)(?![a-zA-Zà-ỹÀ-Ỹ])/i.test(rawSnippetForFurn)
+    ) {
+      extractedStatus = "";
+    }
+
+    // Gác cổng 2: Nếu status bị cụt thành "Full" / "full" trong khi tin gốc ghi rõ "Full đồ" / "full đồ" / "full nội thất" -> khôi phục nguyên cụm
+    if (extractedStatus && /^full$/i.test(extractedStatus) && rawSnippetForFurn) {
+      const fullPhrase = rawSnippetForFurn.match(/(?:full\s*(?:đồ|nội\s*thất|gỗ|toàn\s*bộ))/i);
+      if (fullPhrase) {
+        extractedStatus = fullPhrase[0].trim();
+      }
+    }
+
     let extractedList = String(listing.key_details?.furniture_list || listing.ai_extracted?.furniture_list || "")
       .trim()
       .replace(/^(?:nội\s*thất|đồ\s*đạc|thiết\s*bị)?(?:\s*(?:cơ\s*bản|full|đầy\s*đủ|đủ\s*đồ|nguyên\s*bản))*\s*[:=-]+\s*/i, "")
@@ -211,83 +231,44 @@ export function InboxView({
       extractedList = "";
     }
 
-    if (!extractedStatus && rawSnippetForFurn) {
-      const lower = rawSnippetForFurn.toLowerCase();
-      if (/không\s*(?:có\s*)?(?:nội\s*thất|đồ)|nhà\s*trống|trống\s*đồ|nội\s*thất\s*:\s*trống/i.test(lower)) {
-        extractedStatus = "Không nội thất";
-      } else if (/full\s*(?:đồ|nội\s*thất|toàn\s*bộ)|đầy\s*đủ\s*nội\s*thất|nội\s*thất\s*:\s*full|\bfull\b|đủ\s*đồ/i.test(lower)) {
-        extractedStatus = "full đồ";
-      } else if (/nội\s*thất\s*cơ\s*bản|đồ\s*cơ\s*bản|\bđcb\b|\bcơ\s*bản\b/i.test(lower)) {
-        extractedStatus = "cơ bản";
-      } else if (/bàn\s*giao\s*thô|\bthô\b/i.test(lower)) {
-        extractedStatus = "bàn giao thô";
-      }
-    }
-
     const isUnfurnishedStatus =
       extractedStatus && /không\s*(?:có\s*)?(?:nội\s*thất|đồ)|nhà\s*trống|^trống$|bàn\s*giao\s*thô|^thô$/i.test(extractedStatus);
 
     if (isUnfurnishedStatus) {
       extractedList = "";
-    } else if (!extractedList && rawSnippetForFurn) {
-      const hasExplicitEmptyFurnitureHeader =
-        /(?:nội\s*thất|thiết\s*bị|đồ\s*đạc)(?:[ \t]+(?:cơ\s*bản|full|đầy\s*đủ|đủ\s*đồ|nguyên\s*bản|cđt|cdt))*[ \t]*[:=-][ \t]*(?:\r?\n|$)/i.test(
-          rawSnippetForFurn
-        );
-      const listMatch = rawSnippetForFurn.match(
-        /(?:(?:nội\s*thất|thiết\s*bị|đồ\s*đạc)(?:[ \t]+(?:cơ\s*bản|full|đầy\s*đủ|đủ\s*đồ|nguyên\s*bản|cđt|cdt|gồm))*|\bk[ \t]+thiếu[ \t]+gì|\bnb[ \t]+có[ \t]+thêm|\bfull[ \t]+đồ)[ \t]*[:=-][ \t]*([^\r\n]+)/i
-      );
-      if (listMatch && !hasExplicitEmptyFurnitureHeader) {
-        const rawL = listMatch[1]
-          .trim()
-          .replace(/^[;,\s:=-]+|[;,\s:.=-]+$/g, "")
-          .trim();
-        if (
-          rawL &&
-          !/^(?:nội\s*thất\s*cơ\s*bản|đồ\s*cơ\s*bản|cơ\s*bản|đcb|cb|full|full\s*đồ|đủ\s*đồ|nguyên\s*bản|nb|không\s*nội\s*thất|trống|vào\s*luôn)[:.\s]*$/i.test(
-            rawL
-          )
-        ) {
-          extractedList = rawL;
-        }
-      }
-      if (!extractedList && !hasExplicitEmptyFurnitureHeader) {
-        const itemsFound: string[] = [];
-        const itemPatterns = [
-          /(?:điều\s*hòa|điều\s*hoà|\bđh\b|\bdh\b)/i,
-          /(?:nóng\s*lạnh|\bnl\b)/i,
-          /(?:máy\s*giặt|may\s*giặt|\bmgiặt\b)/i,
-          /(?:tủ\s*lạnh|\btlạnh\b)/i,
-          /(?:bếp\s*từ|\bbtừ\b)/i,
-          /(?:hút\s*mùi)/i,
-          /(?:giường\s*tủ|\bgtủ\b|giường)/i,
-          /(?:tủ\s*bếp)/i,
-          /(?:sofa|sopha|bàn\s*ghế)/i,
-        ];
-        for (const pat of itemPatterns) {
-          const m = rawSnippetForFurn.match(pat);
-          if (m && !itemsFound.includes(m[0])) {
-            itemsFound.push(m[0]);
-          }
-        }
-        if (itemsFound.length > 0) {
-          extractedList = itemsFound.join(", ");
-        }
-      }
     }
 
-    // Lọc bỏ các cụm bố trí phòng nếu lọt vào extractedList ("4 phòng ngủ", "3 WC", "bếp")
+    // Gác cổng 3: Lọc bỏ các cụm giá tiền ("13tr", "19tr", "22tr"), ngày nhận nhà ("1/12 vào", "vào luôn") hoặc bố trí phòng ("4 phòng ngủ, 3 WC, bếp") nếu lọt vào extractedList
     if (extractedList) {
       const validTokens = extractedList
         .split(/[,;\n]+/)
         .map((t) => t.trim().replace(/^[;,\s:=-]+|[;,\s:.=-]+$/g, ""))
         .filter(Boolean)
-        .filter(
-          (tok) =>
-            !/^(?:\d+\s*)?(?:phòng\s*ngủ|pn|ngủ|wc|vs|vệ\s*sinh|phòng\s*khách|pk|khách|phòng\s*thờ|sân\s*phơi|bếp|p\.?\s*bếp)(?:\s*[x×+&,]\s*(?:\d+\s*)?(?:phòng\s*ngủ|pn|ngủ|wc|vs|vệ\s*sinh|phòng\s*khách|pk|khách|bếp|sân\s*phơi))*$/i.test(
+        .filter((tok) => {
+          if (
+            /^(?:\d+\s*)?(?:phòng\s*ngủ|pn|ngủ|wc|vs|vệ\s*sinh|phòng\s*khách|pk|khách|phòng\s*thờ|sân\s*phơi|bếp|p\.?\s*bếp)(?:\s*[x×+&,]\s*(?:\d+\s*)?(?:phòng\s*ngủ|pn|ngủ|wc|vs|vệ\s*sinh|phòng\s*khách|pk|khách|bếp|sân\s*phơi))*$/i.test(
               tok
             )
-        );
+          ) {
+            return false;
+          }
+          if (
+            /(?:^\d+(?:[.,]\d+)?\s*(?:tr|triệu|củ|tỷ|k|usd|\$)\b|\b\d{1,2}\/\d{1,2}(?:\s*vào)?\b|^(?:vào\s*luôn|vào\s*ngay|ở\s*luôn|nhận\s*nhà(?:\s*ngay)?|bàn\s*giao\s*ngay)$)/i.test(
+              tok
+            )
+          ) {
+            return false;
+          }
+          if (
+            /\b\d+(?:[.,]\d+)?\s*(?:tr|triệu|củ|tỷ)\b/i.test(tok) &&
+            !/(?:điều\s*h[oò]a|\bđh\b|\bdh\b|nóng\s*lạnh|\bnl\b|tủ\s*lạnh|\btlạnh\b|máy\s*giặt|\bmgiặt\b|tủ\s*bếp|bếp\s*từ|\bbtừ\b|giường|\bgtủ\b|sofa|rèm|đệm|tivi|\btv\b)/i.test(
+              tok
+            )
+          ) {
+            return false;
+          }
+          return true;
+        });
       extractedList = validTokens.join(", ");
     }
 

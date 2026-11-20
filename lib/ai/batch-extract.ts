@@ -204,6 +204,11 @@ ${goldenSamplesText}
                 items: {
                   type: Type.OBJECT,
                   properties: {
+                    self_check: {
+                      type: Type.STRING,
+                      description:
+                        "Bắt buộc tự kiểm tra 4 điểm trước khi điền: (1) Nội thất: tin có nói hiện trạng ('Full đồ', 'full đồ', 'Nội thất cơ bản', 'Không nội thất') không? Có liệt kê TÊN ĐỒ VẬT cụ thể (điều hòa, nóng lạnh, tủ lạnh, giường, thang máy...) không? Nếu sau chữ 'full đồ' là giá tiền ('13tr', '19tr', '22tr') hoặc ngày vào ('1/12 vào', 'vào luôn') thì furniture_list BẮT BUỘC là null; nếu không nhắc nội thất (chú ý 'thông sàn' không phải 'bàn giao thô') thì furniture_status BẮT BUỘC là null. (2) Diện tích: có diện tích từng tầng không, tổng các tầng có khớp dòng chung không? (3) Giá: tính theo Tổng căn (total), Theo tầng/sàn (per_floor) hay Theo m2 (per_m2)? (4) Hoa hồng: có 'Phí 1th', 'HH: 50%', 'Phí 50%' không?",
+                    },
                     source_text_snippet: { type: Type.STRING },
                     address_text: { type: Type.STRING },
                     house_number: { type: Type.STRING, nullable: true },
@@ -260,15 +265,18 @@ ${goldenSamplesText}
                     furniture_status: {
                       type: Type.STRING,
                       nullable: true,
-                      description: "Cắt nguyên văn từ/cụm từ mô tả hiện trạng có trong tin nhắn (ví dụ: 'đủ đồ', 'full đồ', 'đồ cơ bản', 'full gỗ', 'nhà trống'...). Nếu không có thì để null.",
+                      description:
+                        "Cắt nguyên văn cụm từ chỉ hiện trạng nội thất trong tin nhắn (ví dụ: 'Full đồ', 'full đồ', 'đủ đồ', 'Nội thất cơ bản', 'đồ cơ bản', 'đcb', 'nguyên bản', 'nhà trống', 'Không nội thất', 'bàn giao thô'...). Giữ trọn cụm 'Full đồ' nếu tin ghi 'Full đồ'. Nếu tin không nhắc hiện trạng nội thất (lưu ý 'thông sàn' KHÔNG phải là 'bàn giao thô') thì BẮT BUỘC để null.",
                     },
                     furniture_list: {
                       type: Type.STRING,
                       nullable: true,
-                      description: "Danh sách món đồ liệt kê nguyên mẫu trong tin nhắn. Nếu không có thì để null.",
+                      description:
+                        "CHỈ điền danh sách TÊN ĐỒ VẬT / THIẾT BỊ vật lý được liệt kê trong tin nhắn (ví dụ: 'điều hòa, nóng lạnh, tủ bếp, thang máy, tủ lạnh, máy giặt, giường, sofa, rèm...'). TUYỆT ĐỐI KHÔNG điền giá tiền ('13tr', '19tr', '22tr'), ngày nhận nhà ('1/12 vào', 'vào luôn') hay số phòng ('4 phòng ngủ, 3 WC, bếp') vào đây. Nếu tin chỉ ghi 'Full đồ' hoặc 'Nội thất cơ bản:' mà không liệt kê tên món đồ cụ thể thì BẮT BUỘC để null.",
                     },
                   },
                   required: [
+                    "self_check",
                     "source_text_snippet",
                     "address_text",
                     "property_types",
@@ -457,19 +465,8 @@ function postProcessBatchListing(prop: any, snippetText: string): ExtractedPrope
     prop.price_amount = Math.round(prop.price_amount * 1000000);
   }
 
-  // 2b. Trích xuất nội thất tất định nếu AI chưa bóc tách đủ
-  const furn = extractFurnitureFallback(text);
-  if (!prop.furniture_status || String(prop.furniture_status).trim().toLowerCase() === "null") {
-    if (furn.status) {
-      prop.furniture_status = furn.status;
-      prop.handover_condition = furn.status;
-    }
-  }
-  if (!prop.furniture_list || String(prop.furniture_list).trim().toLowerCase() === "null") {
-    if (furn.list) {
-      prop.furniture_list = furn.list;
-    }
-  }
+  // 2b. Tôn trọng 100% quyết định null của AI cho Nội thất (KHÔNG dùng Regex tự điền đè khi AI trả về null)
+  // Bộ Validator auditAndVerifyExtractedProperty ở bước 3 sẽ làm nhiệm vụ gác cổng kiểm chứng chống bịa.
 
   // 2c. Phục hồi điều kiện thanh toán/cọc (3c1, 1c1, tt3c1...) và hoa hồng (hh, phí mg...) nếu thiếu
   if (!prop.lease_term_text) {

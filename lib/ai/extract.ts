@@ -307,7 +307,7 @@ ${rawText}`;
                     },
                     price_basis: {
                       type: Type.STRING,
-                      enum: ["total", "per_m2"],
+                      enum: ["total", "per_m2", "per_floor"],
                     },
                     price_text: { type: Type.STRING, nullable: true },
                     lease_term_text: { type: Type.STRING, nullable: true },
@@ -330,12 +330,14 @@ ${rawText}`;
                     furniture_status: {
                       type: Type.STRING,
                       nullable: true,
-                      description: "Cắt nguyên văn từ/cụm từ mô tả hiện trạng có trong tin nhắn (ví dụ: 'đủ đồ', 'full đồ', 'đồ cơ bản', 'full gỗ', 'nhà trống'...). Nếu không có thì để null.",
+                      description:
+                        "Cắt nguyên văn cụm từ chỉ hiện trạng nội thất trong tin nhắn (ví dụ: 'Full đồ', 'full đồ', 'đủ đồ', 'Nội thất cơ bản', 'đồ cơ bản', 'đcb', 'nguyên bản', 'nhà trống', 'Không nội thất', 'bàn giao thô'...). Giữ trọn cụm 'Full đồ' nếu tin ghi 'Full đồ'. Nếu tin không nhắc hiện trạng nội thất (lưu ý 'thông sàn' KHÔNG phải là 'bàn giao thô') thì BẮT BUỘC để null.",
                     },
                     furniture_list: {
                       type: Type.STRING,
                       nullable: true,
-                      description: "Danh sách món đồ liệt kê nguyên mẫu trong tin nhắn. Nếu không có thì để null.",
+                      description:
+                        "CHỈ điền danh sách TÊN ĐỒ VẬT / THIẾT BỊ vật lý được liệt kê trong tin nhắn (ví dụ: 'điều hòa, nóng lạnh, tủ bếp, thang máy, tủ lạnh, máy giặt, giường, sofa, rèm...'). TUYỆT ĐỐI KHÔNG điền giá tiền ('13tr', '19tr', '22tr'), ngày nhận nhà ('1/12 vào', 'vào luôn') hay số phòng ('4 phòng ngủ, 3 WC, bếp') vào đây. Nếu tin chỉ ghi 'Full đồ' hoặc 'Nội thất cơ bản:' mà không liệt kê tên món đồ cụ thể thì BẮT BUỘC để null.",
                     },
                     rental_options: {
                       type: Type.ARRAY,
@@ -404,19 +406,8 @@ ${rawText}`;
 function postProcessListing(prop: ExtractedProperty, fullText: string): ExtractedProperty {
   const text = (prop.source_text_snippet || fullText || "").trim();
 
-  // 1. Trích xuất nội thất, điều kiện thuê, hoa hồng tất định nếu AI chưa bóc tách đủ
-  const furn = extractFurnitureFallback(text);
-  if (!prop.furniture_status || String(prop.furniture_status).trim().toLowerCase() === "null") {
-    if (furn.status) {
-      prop.furniture_status = furn.status;
-      prop.handover_condition = furn.status;
-    }
-  }
-  if (!prop.furniture_list || String(prop.furniture_list).trim().toLowerCase() === "null") {
-    if (furn.list) {
-      prop.furniture_list = furn.list;
-    }
-  }
+  // 1. Tôn trọng 100% quyết định null của AI cho Nội thất (KHÔNG dùng Regex tự điền đè khi AI trả về null)
+  // Chỉ phục hồi điều kiện thuê và hoa hồng nếu thiếu
   if (!prop.lease_term_text) {
     const leaseTerm = extractLeaseTermFallback(text);
     if (leaseTerm) prop.lease_term_text = leaseTerm;
