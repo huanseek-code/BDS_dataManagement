@@ -8,7 +8,7 @@ export default async function InboxPage() {
   const supabase = createAdminClient();
 
   // Fetch all pending property listings waiting for review
-  const { data: pendingListings } = await supabase
+  const { data: pendingListings, error: pendingError } = await supabase
     .from("property_listings")
     .select(`
       *,
@@ -31,16 +31,23 @@ export default async function InboxPage() {
     .order("created_at", { ascending: false });
 
   // Fetch approved properties for duplicate detection
-  const { data: existingProperties } = await supabase
+  const { data: existingProperties, error: propertiesError } = await supabase
     .from("properties")
     .select("id, code, address_text, total_lease_area_m2, price_amount, created_at")
     .order("created_at", { ascending: false })
     .limit(300);
 
+  const queryErrorMessage = pendingError
+    ? `Lỗi truy vấn danh sách chờ duyệt: ${pendingError.message}`
+    : propertiesError
+    ? `Lỗi truy vấn danh sách kho BĐS: ${propertiesError.message}`
+    : null;
+
   return (
     <InboxView
       initialListings={pendingListings || []}
       existingProperties={existingProperties || []}
+      initialError={queryErrorMessage}
     />
   );
 }

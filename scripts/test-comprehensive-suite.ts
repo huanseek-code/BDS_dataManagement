@@ -9,6 +9,8 @@ import {
   enrichKeyDetailsWithStructureAndSuitability,
   normalizeVietnamesePropertyTypes,
   detectPricePeriod,
+  expandMultiOptionPropertyListings,
+  analyzePriceRangeAndConflicts,
 } from "../lib/ai/golden-samples";
 
 interface TestCase {
@@ -253,7 +255,7 @@ hh 5 tr`,
       assert.equal(res.price_period, null);
       assert.match(res.key_details.vi, /không miễn phí dịch vụ/i);
       assert.match(res.lease_term_text || "", /Đóng 3/i);
-      assert.equal(res.landlord_commission_text, "5 tr");
+      assert.equal(res.landlord_commission_text, "hh 5 tr");
       assert.ok(res.property_types.includes("Căn hộ chung cư"));
     },
   },
@@ -419,6 +421,88 @@ Gồm: 4 phòng ngủ x 3 WC, bếp
       assert.equal(res.furniture_status, "full đồ");
       assert.equal(res.furniture_list, null);
       assert.equal(res.price_amount, 19000000);
+      assert.equal(res.landlord_commission_text, "Phí 1th");
+      assert.equal(res.our_share_text, null);
+    },
+  },
+  {
+    id: "TC19",
+    group: "Diện tích & Kết cấu (Mỹ Đình 140m2 x 4 tầng)",
+    title: "Biệt thự Mỹ Đình 140m² × 4 tầng = 560m²; không tính số thứ tự tầng ('T2-3-4 mỗi tầng 2 phòng') thành diện tích",
+    rawText: `CHO THUÊ BIỆT THỰ 4 TẦNG MỚI - MỸ ĐÌNH, NAM TỪ LIÊM
+- Giá: 38tr/tháng - Có thương lượng
+- 140m2 x 4 tầng, MT 8m.
+- T1 thông sàn + WC. 
+- T2-3-4 mỗi tầng 2 phòng + WC. 
+- Nội thất cơ bản: điều hòa, nóng lạnh.`,
+    initialProp: { floor_area_m2: "140, 4, 4", total_lease_area_m2: 148, furniture_status: "Nội thất cơ bản", furniture_list: "điều hòa, nóng lạnh" },
+    verify: (res) => {
+      assert.equal(res.floor_area_m2, "140");
+      assert.equal(res.total_lease_area_m2, 560);
+      assert.equal(res.price_amount, 38000000);
+      assert.equal(res.furniture_status, "Nội thất cơ bản");
+      assert.equal(res.furniture_list, "điều hòa, nóng lạnh");
+    },
+  },
+  {
+    id: "TC20",
+    group: "Đa phương án thuê (Tây Hồ 4 tầng 240m²/35tr vs 6 tầng+hầm 360m²/45tr)",
+    title: "Tách riêng 2 phương án thuê trong cùng 1 tin, không ghép 240m² với 45 triệu",
+    rawText: `✅ 60M*6T+ HẦM, THANG MÁY, 35 TRIỆU, RẺ ĐẸP NHẤT TÂY HỒ, CHO THUÊ VP MẶT PHỐ ĐƯỜNG 50M, OTO DỪNG TRÁNH ĐỖ THOẢI MÁI, VỈA HÈ 10M, 0986220001 
+- Mặt phố to rộng đẹp nhất Tây Hồ, trục xương sống chính Vành đai 2, chạy thẳng đường Sân bay Nội Bài.
+- Tầng 1,2,3,4: 60m : 35 Triệu , Thông sàn
+- 60*6 Tầng + Hầm : 45 Triệu
+- Điều hòa , Rèm , nóng lạnh các tầng đầy đủ`,
+    verify: () => {
+      const options = expandMultiOptionPropertyListings(
+        { address_text: "Mặt phố Tây Hồ", property_types: ["Nhà mặt phố"], furniture_list: "Điều hòa, Rèm, nóng lạnh" },
+        `✅ 60M*6T+ HẦM, THANG MÁY, 35 TRIỆU, RẺ ĐẸP NHẤT TÂY HỒ, CHO THUÊ VP MẶT PHỐ ĐƯỜNG 50M, OTO DỪNG TRÁNH ĐỖ THOẢI MÁI, VỈA HÈ 10M, 0986220001 
+- Mặt phố to rộng đẹp nhất Tây Hồ, trục xương sống chính Vành đai 2, chạy thẳng đường Sân bay Nội Bài.
+- Tầng 1,2,3,4: 60m : 35 Triệu , Thông sàn
+- 60*6 Tầng + Hầm : 45 Triệu
+- Điều hòa , Rèm , nóng lạnh các tầng đầy đủ`
+      );
+      assert.equal(options.length, 2);
+      assert.equal(options[0].total_lease_area_m2, 240);
+      assert.equal(options[0].price_amount, 35000000);
+      assert.equal(options[1].total_lease_area_m2, 360);
+      assert.equal(options[1].price_amount, 45000000);
+    },
+  },
+  {
+    id: "TC21",
+    group: "Khoảng giá & Mâu thuẫn giá Tiêu đề vs Nội dung",
+    title: "Mặt phố View Hồ Tây: Tiêu đề 37-40TRIỆU vs Nội dung 35-40 Triệu -> Trung điểm tham khảo 37.5tr + Cảnh báo cần xác nhận",
+    rawText: `✅ 100M *3T, MT 6M, 37-40TRIỆU, RẺ NHẤT ,2 MẶT TIỀN, CHO THUÊ MẶT PHỐ VIEW HỒ TÂY
+- Cho thuê Mặt phố View Tây Hồ gần Lotte Mall .
+- 100m *3 Tầng : 35-40 Triệu`,
+    verify: (res) => {
+      assert.equal(res.total_lease_area_m2, 300);
+      assert.equal(res.floor_area_m2, "100");
+      assert.equal(res.price_amount, 37500000);
+      assert.equal(res.price_min, 35000000);
+      assert.equal(res.price_max, 40000000);
+      assert.match(res.price_text || "", /37-40TRIỆU/);
+      assert.match(res.price_text || "", /35-40 Triệu/);
+      assert.equal(res.key_details.grounding_audit.needs_confirmation, true);
+    },
+  },
+  {
+    id: "TC22",
+    group: "Quy tắc Hoa hồng mới (Không nhân bản 2 ô, để trống phần chia Huanseek khi chưa rõ bên nhận)",
+    title: "56-58 Hà Trung: 'HH : 50%' -> Giữ câu gốc ở ô 1, để trống our_share_text và bật needs_confirmation",
+    rawText: `56 – 58 HÀ TRUNG – HOÀN KIẾM
+- Diện tích: 90m2 x 8 tầng + hầm
+- Mặt tiền : 8m 
+- Giá thuê : 200tr/tháng
+- HH : 50%
+- Thông tin khác : riêng biệt, t1,2 thông sàn, kd mọi mô hình, tt3t, cọc 1, thang máy, vào luôn`,
+    initialProp: { landlord_commission_text: "HH : 50%", our_share_text: "HH : 50%" },
+    verify: (res) => {
+      assert.equal(res.landlord_commission_text, "HH : 50%");
+      assert.equal(res.our_share_text, null);
+      assert.equal(res.furniture_status, null);
+      assert.equal(res.key_details.grounding_audit.needs_confirmation, true);
     },
   },
 ];

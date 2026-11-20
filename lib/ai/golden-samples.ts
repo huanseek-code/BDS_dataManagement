@@ -613,11 +613,14 @@ export function extractMultiFloorAreas(
       continue;
     }
 
-    // Tìm con số diện tích m2 trên dòng mô tả tầng này
+    // Tìm con số diện tích m2 trên dòng mô tả tầng này (BẮT BUỘC phải có đơn vị m2 / m² / mét vuông / sqm, hoặc chữ m đứng trước khoảng trắng mà KHÔNG phải cụm "mỗi tầng X phòng")
     const areaInLineMatch = restOfLine.match(
-      /(?:[:(\s-]|mỗi\s*(?:tầng|sàn)\s*)(\d+(?:[.,]\d+)?)\s*(?:m2|m²|m\b|mét(?:\s*vuông)?|sqm)(?:\s*\/\s*(?:sàn|tầng))?/i
+      /(?:[:(\s-]|mỗi\s*(?:tầng|sàn)\s*)(\d+(?:[.,]\d+)?)\s*(?:m2|m²|mét(?:\s*vuông)?|sqm|m(?=\s*(?:[):,;/]|$)))(?:\s*\/\s*(?:sàn|tầng))?/i
     );
-    if (areaInLineMatch) {
+    const isRoomCountNotArea =
+      areaInLineMatch &&
+      new RegExp(`\\b${areaInLineMatch[1]}\\s*(?:phòng|pn|ngủ|wc|vs)\\b`, "i").test(restOfLine);
+    if (areaInLineMatch && !isRoomCountNotArea) {
       const val = areaInLineMatch[1].replace(",", ".");
       const numVal = parseFloat(val);
       if (numVal >= 10 && numVal <= 50000) {
@@ -633,13 +636,16 @@ export function extractMultiFloorAreas(
   }
 
   // Fallback cho trường hợp viết liền nhiều tầng trên cùng 1 dòng: "T1: 50m2, T2: 70m2, T3: 80m2"
+  // Lưu ý: đơn vị m2 / m² / mét vuông / sqm là BẮT BUỘC có hậu tố để không bao giờ bắt nhầm chữ "m" đầu từ hoặc số thứ tự tầng ("T2-3-4 mỗi tầng 2 phòng")
   if (floorMap.size === 0) {
     const inlineFloorRegex =
-      /(?:tầng|t)\s*(\d+(?:[\s,và-]+\d+)*)[\s:là(-]+(?:diện\s*tích\s*[:\s-]*)?(?:mỗi\s*(?:tầng|sàn)\s*)?(\d+(?:[.,]\d+)?)\s*(?:m(?:2|²|ét(?:\s*vuông)?)?|sqm)/gi;
+      /(?:tầng|t)\s*(\d+(?:[\s,và-]+\d+)*)[\s:là(-]+(?:diện\s*tích\s*[:\s-]*)?(?:mỗi\s*(?:tầng|sàn)\s*)?(\d+(?:[.,]\d+)?)\s*(?:m2|m²|mét(?:\s*vuông)?|sqm)\b/gi;
     const inlineMatches = [...text.matchAll(inlineFloorRegex)];
     for (const m of inlineMatches) {
       const floorSpec = m[1];
       const val = m[2].replace(",", ".");
+      const numVal = parseFloat(val);
+      if (numVal < 10) continue;
       if (floorSpec.includes("-")) {
         const [startF, endF] = floorSpec.split("-").map((s) => parseInt(s.trim(), 10));
         if (startF > 0 && endF >= startF && endF <= 100) {
@@ -704,7 +710,21 @@ export function extractMultiFloorAreas(
     }
   }
 
-  // 3. Mẫu phổ biến thực tế: "50m² × 5 tầng", "120m2 x 5 tầng", "100 m2/sàn x 6 tầng"
+  // 3. Mẫu phổ biến thực tế: "50m² × 5 tầng", "120m2 x 5 tầng", "100 m2/sàn x 6 tầng", "8 tầng x 180m²/sàn"
+  const reverseMultiFloorMatch = !multiFloorMatch
+    ? text.match(/(\d+)\s*(?:tầng|t\b|lầu)\s*[x×*]\s*(\d+(?:[.,]\d+)?)\s*(?:m2|m²|m\b|mét)(?:\s*\/\s*(?:sàn|tầng))?/i)
+    : null;
+  if (reverseMultiFloorMatch) {
+    const fCount = parseInt(reverseMultiFloorMatch[1], 10);
+    const pFloorStr = reverseMultiFloorMatch[2].replace(",", ".");
+    const pFloorNum = parseFloat(pFloorStr);
+    if (fCount > 0 && fCount <= 100 && pFloorNum > 0) {
+      return {
+        floorAreaStr: pFloorStr,
+        totalArea: Math.round(pFloorNum * fCount),
+      };
+    }
+  }
   if (multiFloorMatch && headerPerFloorStr && headerPerFloorNum > 0 && headerFloors > 0 && headerFloors <= 100) {
     // Nếu là cho thuê sàn lẻ (có câu "Còn trống các tầng: ..." hoặc giá "/sàn", "/tầng"), tổng diện tích lấy theo 1 sàn hoặc số sàn trống
     const isPerFloorListing = /(?:triệu|tr|k|usd|\$)\s*\/\s*(?:1\s*)?(?:sàn|tầng)\b/i.test(text) && /còn\s*trống/i.test(text);
@@ -732,12 +752,225 @@ export function extractMultiFloorAreas(
 
 export interface GroundingAuditResult {
   is_verified: boolean;
+  needs_confirmation?: boolean;
+  confirmation_reasons?: string[];
   citations: {
     price?: string | null;
     floor_area?: string | null;
     furniture?: string | null;
+    commission?: string | null;
   };
   audit_notes: string[];
+}
+
+/**
+ * PHÂN TÍCH KHOẢNG GIÁ & ĐỐI CHIẾU MÂU THUẪN GIÁ TIÊU ĐỀ VS NỘI DUNG (Price Range & Title-Body Conflict Analyzer)
+ * - Nếu cùng một phương án có khoảng giá rõ ràng (VD: "35-40 Triệu" -> min=35tr, max=40tr, midpoint=37.5tr tham khảo, giữ nguyên câu gốc).
+ * - Nếu tiêu đề và nội dung báo 2 mức giá / khoảng giá khác nhau (VD: tiêu đề "37-40TRIỆU", nội dung "35-40 Triệu") -> giữ cả hai câu gốc, lấy trung điểm của nội dung chi tiết làm giá tham khảo và gắn cờ needsConflictConfirmation = true.
+ * - Không lấy trung bình giữa hai phương án thuê khác nhau (VD: 4 tầng 35tr vs 6 tầng 45tr).
+ */
+export function analyzePriceRangeAndConflicts(
+  rawText: string,
+  currentPriceAmount?: number | null,
+  currentPriceText?: string | null
+): {
+  referenceAmount: number | null;
+  priceMin: number | null;
+  priceMax: number | null;
+  verbatimPriceText: string | null;
+  hasRange: boolean;
+  hasConflict: boolean;
+  conflictWarning: string | null;
+} {
+  const result = {
+    referenceAmount: currentPriceAmount ?? null,
+    priceMin: null as number | null,
+    priceMax: null as number | null,
+    verbatimPriceText: currentPriceText ?? null,
+    hasRange: false,
+    hasConflict: false,
+    conflictWarning: null as string | null,
+  };
+
+  if (!rawText || typeof rawText !== "string") return result;
+
+  const lines = rawText
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return result;
+
+  // Tìm tất cả các khoảng giá dạng "35-40 Triệu", "37 - 40tr/tháng" trên từng dòng
+  // Loại trừ các dòng ghi số tầng kiểu "T2-3-4", "1-2 năm", "56 - 58 Hà Trung", "19-21-23 Bạch Mai"
+  const rangeRegex =
+    /(?<!(?:tầng|t|ngõ|số|đường|phố|hđ|thuê)\s*)(\d{1,4}(?:[.,]\d+)?)\s*[-–~]\s*(\d{1,4}(?:[.,]\d+)?)\s*(triệu|trieu|tr|củ|tỷ|ty|usd|\$)(?:\s*\/\s*(?:tháng|thang|th|sàn|tầng|m2|m²))?/gi;
+
+  interface FoundPriceSpan {
+    lineIdx: number;
+    rawSpan: string;
+    minVal: number;
+    maxVal: number;
+    midVal: number;
+    unit: string;
+    isRange: boolean;
+  }
+
+  const foundRanges: FoundPriceSpan[] = [];
+
+  lines.forEach((line, idx) => {
+    const matches = [...line.matchAll(rangeRegex)];
+    for (const m of matches) {
+      const n1 = parseFloat(m[1].replace(",", "."));
+      const n2 = parseFloat(m[2].replace(",", "."));
+      const unit = m[3].toLowerCase();
+      if (n1 > 0 && n2 > n1 && n2 <= n1 * 3) {
+        const mult = unit.startsWith("t") && !unit.startsWith("tr") ? 1000000000 : unit === "usd" || unit === "$" ? 1 : 1000000;
+        const minV = Math.round(n1 * mult);
+        const maxV = Math.round(n2 * mult);
+        const midV = Math.round(((n1 + n2) / 2) * mult);
+        foundRanges.push({
+          lineIdx: idx,
+          rawSpan: m[0].trim(),
+          minVal: minV,
+          maxVal: maxV,
+          midVal: midV,
+          unit,
+          isRange: true,
+        });
+      }
+    }
+  });
+
+  if (foundRanges.length >= 2) {
+    const first = foundRanges[0];
+    const diffRange = foundRanges.find((r) => r.minVal !== first.minVal || r.maxVal !== first.maxVal);
+    if (diffRange) {
+      // Tiêu đề và nội dung báo 2 khoảng giá khác nhau (VD: Tiêu đề 37-40TRIỆU vs Nội dung 35-40 Triệu)
+      result.hasRange = true;
+      result.hasConflict = true;
+      result.priceMin = diffRange.minVal;
+      result.priceMax = diffRange.maxVal;
+      result.referenceAmount = diffRange.midVal;
+      result.verbatimPriceText = `Tiêu đề: ${first.rawSpan} | Nội dung: ${diffRange.rawSpan} (Tham khảo: ${(diffRange.midVal / 1000000).toString().replace(".", ",")}tr - Cần xác nhận)`;
+      result.conflictWarning = `Mâu thuẫn giá giữa tiêu đề (${first.rawSpan}) và nội dung (${diffRange.rawSpan}) - Cần xác nhận`;
+      return result;
+    }
+  }
+
+  if (foundRanges.length >= 1) {
+    const r = foundRanges[foundRanges.length - 1];
+    result.hasRange = true;
+    result.priceMin = r.minVal;
+    result.priceMax = r.maxVal;
+    result.referenceAmount = r.midVal;
+    const midTr = (r.midVal / 1000000).toString().replace(".", ",");
+    result.verbatimPriceText = `${r.rawSpan} (Tham khảo trung điểm: ${midTr}tr)`;
+    return result;
+  }
+
+  return result;
+}
+
+/**
+ * TÁCH ĐA PHƯƠNG ÁN THUÊ TRONG CÙNG 1 TIN NHẮN (Multi-Rental-Option Splitter)
+ * Ví dụ căn Mặt phố Tây Hồ:
+ *   "- Tầng 1,2,3,4: 60m : 35 Triệu , Thông sàn"
+ *   "- 60*6 Tầng + Hầm : 45 Triệu"
+ * -> Tự động tách thành 2 bản ghi phương án độc lập để không bao giờ ghép nhầm 240m² với 45 triệu!
+ */
+export function expandMultiOptionPropertyListings(prop: any, rawSnippet: string): any[] {
+  const text = (rawSnippet || prop?.source_text_snippet || "").trim();
+  if (!text) return [prop];
+
+  // Tìm các dòng trong tin nhắn biểu diễn từng phương án thuê riêng biệt (có diện tích/số tầng + giá tiền riêng trên từng dòng)
+  const lines = String(text)
+    .split(/\r?\n/)
+    .map((l: string) => l.trim())
+    .filter(Boolean);
+
+  interface ParsedRentalOptionLine {
+    rawLine: string;
+    optionLabel: string;
+    floorAreaStr: string;
+    totalArea: number;
+    priceAmount: number;
+    priceText: string;
+    hasBasement: boolean;
+  }
+
+  const optionLines: ParsedRentalOptionLine[] = [];
+
+  for (const line of lines) {
+    // Bỏ qua dòng tiêu đề in hoa có số điện thoại ở đầu tin (VD: "✅ 60M*6T+ HẦM, THANG MÁY, 35 TRIỆU... 0986220001")
+    if (/^✅|\b0\d{9}\b/.test(line)) continue;
+
+    // Mẫu A: "- Tầng 1,2,3,4: 60m : 35 Triệu , Thông sàn"
+    const partialFloorsMatch = line.match(
+      /^[-•*+]\s*(?:tầng|t)\s*(\d+(?:\s*,\s*\d+)+)\s*[:=-]\s*(\d+(?:[.,]\d+)?)\s*(?:m2|m²|m)\b[^:\d]*[:=-]\s*(\d+(?:[.,]\d+)?)\s*(triệu|trieu|tr)\b/i
+    );
+    if (partialFloorsMatch) {
+      const floorList = partialFloorsMatch[1]
+        .split(",")
+        .map((s: string) => parseInt(s.trim(), 10))
+        .filter((n: number) => !isNaN(n));
+      const perFloor = parseFloat(partialFloorsMatch[2].replace(",", "."));
+      const priceNum = parseFloat(partialFloorsMatch[3].replace(",", "."));
+      if (floorList.length >= 2 && perFloor > 0 && priceNum > 0) {
+        optionLines.push({
+          rawLine: line,
+          optionLabel: `Phương án thuê ${floorList.length} tầng (Tầng ${floorList.join(",")})`,
+          floorAreaStr: String(perFloor),
+          totalArea: Math.round(perFloor * floorList.length),
+          priceAmount: Math.round(priceNum * 1000000),
+          priceText: `${partialFloorsMatch[3]} ${partialFloorsMatch[4]}`,
+          hasBasement: false,
+        });
+        continue;
+      }
+    }
+
+    // Mẫu B: "- 60*6 Tầng + Hầm : 45 Triệu" hoặc "- 60m * 6 Tầng : 45 Triệu"
+    const fullHouseOptionMatch = line.match(
+      /^[-•*+]\s*(\d+(?:[.,]\d+)?)\s*(?:m2|m²|m)?\s*[x×*]\s*(\d+)\s*(?:tầng|t\b|lầu)(\s*\+\s*\d*\s*hầm)?\s*[:=-]\s*(\d+(?:[.,]\d+)?)\s*(triệu|trieu|tr)\b/i
+    );
+    if (fullHouseOptionMatch) {
+      const perFloor = parseFloat(fullHouseOptionMatch[1].replace(",", "."));
+      const floors = parseInt(fullHouseOptionMatch[2], 10);
+      const hasBasement = Boolean(fullHouseOptionMatch[3]);
+      const priceNum = parseFloat(fullHouseOptionMatch[4].replace(",", "."));
+      if (perFloor > 0 && floors >= 2 && priceNum > 0) {
+        optionLines.push({
+          rawLine: line,
+          optionLabel: `Phương án thuê cả nhà (${floors} tầng${hasBasement ? " + hầm" : ""})`,
+          floorAreaStr: String(perFloor),
+          totalArea: Math.round(perFloor * floors),
+          priceAmount: Math.round(priceNum * 1000000),
+          priceText: `${fullHouseOptionMatch[4]} ${fullHouseOptionMatch[5]}`,
+          hasBasement,
+        });
+      }
+    }
+  }
+
+  // Nếu phát hiện từ 2 phương án thuê trở lên trong cùng 1 căn -> Tách thành các bản ghi riêng biệt
+  if (optionLines.length >= 2) {
+    return optionLines.map((opt) => {
+      const cloned = JSON.parse(JSON.stringify(prop));
+      const baseAddr = String(cloned.address_text || "").replace(/\s*\(Phương án.*$/i, "").trim();
+      cloned.address_text = `${baseAddr} (${opt.optionLabel})`;
+      cloned.floor_area_m2 = opt.floorAreaStr;
+      cloned.total_lease_area_m2 = opt.totalArea;
+      cloned.price_amount = opt.priceAmount;
+      cloned.price_text = `${opt.priceText} (${opt.optionLabel})`;
+      if (cloned.key_details) {
+        const basementNote = opt.hasBasement ? " (chưa rõ diện tích tầng hầm - cần xác nhận)" : "";
+        cloned.key_details.vi = `${opt.optionLabel}: DT ${opt.floorAreaStr}m²/sàn (Tổng DT tầng nổi: ${opt.totalArea}m²${basementNote}), giá ${opt.priceText}. Chi tiết gốc: ${opt.rawLine}`;
+      }
+      return cloned;
+    });
+  }
+
+  return [prop];
 }
 
 /**
@@ -876,22 +1109,57 @@ export function auditAndVerifyExtractedProperty(
     prop.price_currency = "VND";
   }
 
+  // 1b. Phân tích Khoảng giá (Min-Max -> Trung điểm tham khảo) & Kiểm tra mâu thuẫn giá Tiêu đề vs Nội dung
+  const confirmation_reasons: string[] = [];
+  if (text.length > 0) {
+    const priceAnalysis = analyzePriceRangeAndConflicts(text, prop.price_amount, prop.price_text);
+    if (priceAnalysis.hasRange) {
+      prop.price_amount = priceAnalysis.referenceAmount;
+      prop.price_min = priceAnalysis.priceMin;
+      prop.price_max = priceAnalysis.priceMax;
+      if (priceAnalysis.verbatimPriceText) {
+        prop.price_text = priceAnalysis.verbatimPriceText;
+      }
+      if (priceAnalysis.hasConflict && priceAnalysis.conflictWarning) {
+        confirmation_reasons.push(priceAnalysis.conflictWarning);
+        audit_notes.push(priceAnalysis.conflictWarning);
+        if (prop.key_details) {
+          const curVi = prop.key_details.vi || "";
+          if (!curVi.includes("Mâu thuẫn giá")) {
+            prop.key_details.vi = `${curVi ? curVi.replace(/\.*$/, "") + ". " : ""}⚠️ ${priceAnalysis.conflictWarning}.`;
+          }
+        }
+      } else {
+        confirmation_reasons.push(`Khoảng giá ${prop.price_text} (đang lấy trung điểm làm giá tham khảo)`);
+      }
+    }
+  }
+
   // 2. Kiểm toán Diện tích mỗi tầng & Tổng diện tích (Floor-Area Integrity & Discrepancy Audit)
   if (text.length > 0) {
-    const multiFloor = extractMultiFloorAreas(text);
+    const isAlreadySplitRentalOption = /\(Phương án/i.test(String(prop.address_text || ""));
+    const multiFloor = isAlreadySplitRentalOption ? null : extractMultiFloorAreas(text);
     if (multiFloor) {
-      if (multiFloor.hasExplicitFloorBreakdown || !prop.floor_area_m2) {
+      // Nếu prop.floor_area_m2 đang chứa số thứ tự tầng sai (VD: "140, 4, 4") hoặc chưa có -> ghi đè chuẩn từ multiFloor
+      const hasCorruptedFloorArea =
+        prop.floor_area_m2 &&
+        String(prop.floor_area_m2).includes(",") &&
+        !multiFloor.floorAreaStr.includes(",");
+      if (multiFloor.hasExplicitFloorBreakdown || !prop.floor_area_m2 || hasCorruptedFloorArea) {
         prop.floor_area_m2 = multiFloor.floorAreaStr;
       }
       if (
         multiFloor.hasExplicitFloorBreakdown ||
+        hasCorruptedFloorArea ||
         !prop.total_lease_area_m2 ||
-        Number(prop.total_lease_area_m2) <= 0
+        Number(prop.total_lease_area_m2) <= 0 ||
+        (multiFloor.totalArea > 0 && Number(prop.total_lease_area_m2) === parseFloat(multiFloor.floorAreaStr))
       ) {
         prop.total_lease_area_m2 = multiFloor.totalArea;
       }
       if (multiFloor.discrepancyNote) {
         audit_notes.push(multiFloor.discrepancyNote);
+        confirmation_reasons.push(multiFloor.discrepancyNote);
         if (prop.key_details) {
           const curVi = prop.key_details.vi || "";
           if (!curVi.includes("Cần xác nhận diện tích")) {
@@ -899,6 +1167,11 @@ export function auditAndVerifyExtractedProperty(
           }
         }
       }
+    }
+
+    // Nếu tin có tầng hầm ("+ hầm", "+ 1 hầm", "3 tầng hầm") mà không ghi rõ diện tích hầm bằng m2 -> đánh dấu cần xác nhận diện tích hầm
+    if (/(?:\+\s*\d*\s*(?:tầng\s*)?hầm|\d+\s*tầng\s*hầm)/i.test(text) && !/hầm\s*[:(]?\s*\d+\s*m/i.test(text)) {
+      confirmation_reasons.push("Có tầng hầm nhưng tin gốc chưa ghi diện tích hầm (tổng DT chỉ tính các tầng nổi)");
     }
 
     const hasMultiFloors =
@@ -1008,16 +1281,68 @@ export function auditAndVerifyExtractedProperty(
   prop.lease_term_text = cleanField(prop.lease_term_text);
   prop.landlord_commission_text = cleanField(prop.landlord_commission_text);
   prop.our_share_text = cleanField(prop.our_share_text);
+
+  // 5b. QUY TẮC HOA HỒNG MỚI (100% Text nguyên bản - Không chép 1 con số vào 2 mục - Không tự điền Phần chia Huanseek khi tin không nói rõ)
+  if (text.length > 0) {
+    // Trích câu gốc hoa hồng từ tin nhắn nếu cả 2 ô đang trống
+    const rawCommFromText = extractCommissionFallback(text);
+    if (!prop.landlord_commission_text && !prop.our_share_text && rawCommFromText) {
+      prop.landlord_commission_text = rawCommFromText;
+    }
+
+    // Nếu AI chỉ điền vào our_share_text mà để trống landlord_commission_text, kiểm tra xem tin gốc có thực sự nói rõ "chia bên mình / huanseek" không
+    const explicitlyMentionsOurShare =
+      /(?:bên\s*mình|huanseek|chia\s*(?:cho\s*)?(?:bên\s*bạn|em|mình)|trừ\s*\d+%\s*cho\s*bên\s*kết\s*hợp)/i.test(text);
+
+    if (!explicitlyMentionsOurShare) {
+      // Tin chỉ ghi chung chung ("HH : 50%", "Phí 50%", "Phí 1th", "Phí 10tr", "mg: 50%", "Phí sale 1 tháng") -> Chưa rõ bên nhận!
+      // Bắt buộc chuyển câu gốc về ô Hoa hồng chủ nhà trả (hoặc giữ nguyên ở ô 1) và ĐỂ TRỐNG hoàn toàn ô Phần hoa hồng bên mình (Huanseek)!
+      if (!prop.landlord_commission_text && prop.our_share_text) {
+        prop.landlord_commission_text = prop.our_share_text;
+      }
+      prop.our_share_text = null;
+      prop.our_share_percent = null;
+    } else if (
+      prop.landlord_commission_text &&
+      prop.our_share_text &&
+      prop.landlord_commission_text.trim().toLowerCase() === prop.our_share_text.trim().toLowerCase()
+    ) {
+      // Tuyệt đối không chép cùng một con số vào cả 2 mục
+      prop.our_share_text = null;
+      prop.our_share_percent = null;
+    }
+
+    if (prop.landlord_commission_text && !explicitlyMentionsOurShare) {
+      const explicitlyMentionsLandlordPays = /(?:chủ\s*(?:nhà\s*)?trả|hh\s*chủ\s*nhà)/i.test(text);
+      if (!explicitlyMentionsLandlordPays) {
+        confirmation_reasons.push(
+          `Hoa hồng "${prop.landlord_commission_text}" chưa rõ bên nhận (đang giữ câu gốc và để trống phần chia Huanseek)`
+        );
+      }
+    }
+  }
+
+  if (!prop.price_amount || Number(prop.price_amount) <= 0) {
+    confirmation_reasons.push("Tin gốc chưa có giá thuê (cần xác nhận giá)");
+  }
+  if (!prop.total_lease_area_m2 || Number(prop.total_lease_area_m2) <= 0) {
+    confirmation_reasons.push("Tin gốc chưa rõ diện tích m² (cần xác nhận diện tích)");
+  }
+
   prop.floor_area_m2 = cleanField(prop.floor_area_m2);
   if (prop.floor_area_m2) prop.floor_area_m2 = String(prop.floor_area_m2);
 
-  // 6. Xây dựng kết quả kiểm toán bằng chứng
+  // 6. Xây dựng kết quả kiểm toán bằng chứng (Không gắn "đã xác thực 100%" cho trường còn thiếu căn cứ / mâu thuẫn)
+  const needsConfirmation = confirmation_reasons.length > 0;
   const audit: GroundingAuditResult = {
-    is_verified: true,
+    is_verified: !needsConfirmation,
+    needs_confirmation: needsConfirmation,
+    confirmation_reasons,
     citations: {
       price: cleanField(prop.price_evidence) || cleanField(prop.price_text),
       floor_area: cleanField(prop.floor_area_evidence),
       furniture: cleanField(prop.furniture_evidence) || cleanField(prop.furniture_status),
+      commission: cleanField(prop.landlord_commission_text),
     },
     audit_notes,
   };
@@ -1144,11 +1469,14 @@ export function extractLeaseTermFallback(text: string): string | null {
 export function extractCommissionFallback(text: string): string | null {
   if (!text) return null;
   const match = text.match(
-    /(?:hoa\s*hồng(?:\s*sale|\s*chủ\s*nhà)?|hh(?:\s*sale|\s*chủ\s*nhà)?|phí\s*(?:môi\s*giới|mô\s*giới|mg))\s*[:\s-]*([^\n.)]+)/i
+    /(?:🌹\s*)?(?:hoa\s*hồng(?:\s*sale|\s*chủ\s*nhà)?|\bhh(?:\s*sale|\s*chủ\s*nhà)?|phí\s*(?:môi\s*giới|mô\s*giới|mg|sale)?|\bmg)\s*[:=-]?\s*(\d+[^\n]*)/i
   );
   if (match) {
-    const val = match[1].trim().replace(/^[;,\s:-]+|[;,\s.-]+$/g, "");
-    if (val) return val;
+    let full = match[0].replace(/^🌹\s*/, "").trim().replace(/^[;,\s:-]+|[;,\s.-]+$/g, "");
+    if (full.includes("(") && !full.includes(")")) full += ")";
+    if (full && !/^(?:phí\s*dịch\s*vụ|phí\s*dv|phí\s*gửi\s*xe|phí\s*quản\s*lý)/i.test(full)) {
+      return full;
+    }
   }
   const combineMatch = text.match(/trừ\s*\d+%\s*cho\s*bên\s*kết\s*hợp/i);
   if (combineMatch) return combineMatch[0].trim();

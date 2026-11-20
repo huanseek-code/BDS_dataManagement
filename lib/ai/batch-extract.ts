@@ -16,6 +16,7 @@ import {
   extractSpecialStructureNotes,
   enrichKeyDetailsWithStructureAndSuitability,
   normalizeVietnamesePropertyTypes,
+  expandMultiOptionPropertyListings,
 } from "./golden-samples";
 
 export { extractFurnitureFallback };
@@ -129,7 +130,11 @@ NGUYÊN TẮC CỐT LÕI - BÓC TÁCH NGUYÊN GỐC CHỮ TRONG TIN NHẮN (STRI
    - SANG NHƯỢNG CỬA HÀNG / MẶT BẰNG:
      * price_amount LUÔN LUÔN LÀ TIỀN THUÊ NHÀ ĐỊNH KỲ (ví dụ: "tiền nhà 25 triệu/tháng, sang nhượng đồ đạc 70 triệu" -> price_amount: 25000000).
    - NHIỀU PHƯƠNG ÁN THUÊ TRONG 1 CĂN (Thuê lẻ sàn vs Thuê cả nhà):
-     * Lấy phương án toàn bộ cả nhà làm giá chính price_amount, ghi chú phương án thuê lẻ vào "key_details.vi".
+     * Nếu một căn nhà nêu rõ nhiều phương án thuê khác nhau kèm diện tích và mức giá riêng (ví dụ: "- Tầng 1,2,3,4: 60m : 35 Triệu" và "- 60*6 Tầng + Hầm : 45 Triệu"), BẮT BUỘC TÁCH THÀNH CÁC PHẦN TỬ RIÊNG BIỆT trong mảng "properties" (ghi rõ tên phương án vào address_text, ví dụ: "Mặt phố Tây Hồ (Phương án thuê 4 tầng)" và "Mặt phố Tây Hồ (Phương án thuê cả nhà 6 tầng + hầm)"). TUYỆT ĐỐI KHÔNG ghép diện tích của phương án 1 (240m²) với giá của phương án 2 (45 triệu)!
+   - KHOẢNG GIÁ TRONG CÙNG MỘT PHƯƠNG ÁN & MÂU THUẪN GIÁ TIÊU ĐỀ VS NỘI DUNG:
+     * Nếu cùng một phương án có một khoảng giá rõ ràng (ví dụ: "35-40 Triệu"), lấy trung điểm (37500000) làm price_amount tham khảo và sao chép nguyên văn khoảng giá gốc vào price_text.
+     * Nếu dòng tiêu đề và dòng nội dung báo hai mức giá / khoảng giá khác nhau (ví dụ: tiêu đề ghi "37-40TRIỆU" nhưng nội dung ghi "35-40 Triệu"), giữ cả hai trong price_text và ghi cảnh báo cần xác nhận vào key_details.vi.
+     * Không lấy trung bình giữa các phương án thuê khác nhau, đơn vị tính hoặc loại tiền khác nhau.
    - TIN NHẮN ĐÍNH CHÍNH / ĐIỀU CHỈNH TRONG DÒNG THỜI GIAN:
      * Lấy giá và thông số mới nhất sau đính chính.
    - "price_currency": "VND" hoặc "USD".
@@ -140,11 +145,9 @@ NGUYÊN TẮC CỐT LÕI - BÓC TÁCH NGUYÊN GỐC CHỮ TRONG TIN NHẮN (STRI
    - "price_period": CHỈ ĐIỀN "Theo tháng", "Theo năm", hoặc "Một lần" khi tin nhắn có chữ rõ ràng chỉ kỳ hạn. Nếu không nêu rõ kỳ hạn -> BẮT BUỘC ĐỂ NULL!
    - "price_text": Sao chép NGUYÊN VĂN câu giá từ tin nhắn (bao gồm cả "có TL", "ctl", "có tl sâu", "có deal", "giá chốt", "mpdv", "hết mpdv"...).
 
-7. HOA HỒNG & ĐIỀU KIỆN HỢP ĐỒNG (GIỮ NGUYÊN VĂN TIẾNG VIỆT):
-   - "landlord_commission_text": Sao chép NGUYÊN VĂN câu chữ hoa hồng/phí môi giới (nhận diện các từ: "hh", "hh sale", "hoa hồng sale", "phí mg", "phí môi giới", "hh 1/2 tháng", "hh chủ nhà nửa tháng", "1 tháng nếu hđ 2 năm, phí mg 1/2 tháng nếu hđ 1 năm", "Trừ 30% cho bên kết hợp").
-     * Lưu ý: "Trừ 30% cho bên kết hợp" là tỷ lệ chia hoa hồng môi giới, TUYỆT ĐỐI KHÔNG trừ vào giá thuê nhà.
-   - "our_share_percent": Tỷ lệ % bên mình nhận nếu có nhắc (ví dụ: 50).
-   - "our_share_text": Sao chép NGUYÊN VĂN (ví dụ: "bên mình 50%").
+7. HOA HỒNG & ĐIỀU KIỆN HỢP ĐỒNG (GIỮ NGUYÊN VĂN TIẾNG VIỆT - KHÔNG NHÂN BẢN 2 Ô):
+   - "landlord_commission_text": Sao chép NGUYÊN VĂN câu chữ hoa hồng/phí môi giới từ tin nhắn (ví dụ: "HH : 50%", "Phí 50%", "Phí 1th", "Phí: 10tr", "mg: 50%", "Phí sale 1 tháng", "1 tháng nếu hđ 2 năm, phí mg 1/2 tháng nếu hđ 1 năm").
+   - "our_share_text" & "our_share_percent": CHỈ ĐIỀN khi tin nhắn nói rõ phần chia riêng cho bên mình / Huanseek. Nếu tin nhắn chỉ ghi chung chung ("HH : 50%", "Phí 50%", "Phí 1th", "mg: 50%", "Phí: 10tr") mà không nói rõ bên nào trả/nhận -> BẮT BUỘC ĐỂ "our_share_text": null và "our_share_percent": null (TUYỆT ĐỐI KHÔNG chép một con số vào cả hai mục landlord_commission_text và our_share_text!).
    - "lease_term_text": Sao chép NGUYÊN VĂN điều kiện cọc, đóng tiền, thời hạn hợp đồng (nhận diện cả viết tắt: "3c1" = đóng 3 cọc 1, "1c1" = đóng 1 cọc 1, "tt3c1", "tt3 cọc 2", "6 cọc 1 hoặc 3 cọc 2" - giữ nguyên 2 phương án không ghép chéo, "đóng 3 cọc 10tr" - đóng 3 kỳ cọc 10 triệu khác đơn vị, "hđ tối thiểu 1 năm", "ký từ 2 năm trở lên").
 
 8. QUY TẮC PHÂN BIỆT TỪ VIẾT TẮT ĐA NGHĨA TIẾNG VIỆT:
@@ -315,8 +318,12 @@ ${goldenSamplesText}
         rawP.source_text_snippet = separatedSnippets[i] || "";
       }
       const textContext = rawP.source_text_snippet || separatedSnippets[i] || "";
-      const processed = postProcessBatchListing(rawP, textContext);
-      sanitizedProps.push(processed);
+      // Tách đa phương án thuê (nếu 1 căn có 2 phương án thuê riêng biệt như 4 tầng 35tr vs 6 tầng+hầm 45tr mà AI chưa tách)
+      const expandedOptions = expandMultiOptionPropertyListings(rawP, textContext);
+      for (const optProp of expandedOptions) {
+        const processed = postProcessBatchListing(optProp, textContext);
+        sanitizedProps.push(processed);
+      }
     }
 
     return {

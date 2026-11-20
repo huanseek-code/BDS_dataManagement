@@ -15,6 +15,7 @@ import {
   extractSpecialStructureNotes,
   enrichKeyDetailsWithStructureAndSuitability,
   normalizeVietnamesePropertyTypes,
+  expandMultiOptionPropertyListings,
 } from "./golden-samples";
 
 export interface ExtractedProperty {
@@ -385,7 +386,14 @@ ${rawText}`;
     });
 
     const rawProps = parsed.properties || [];
-    const postProcessed = rawProps.map((p: ExtractedProperty) => postProcessListing(p, rawText));
+    const postProcessed: ExtractedProperty[] = [];
+    for (const p of rawProps) {
+      const snippet = p.source_text_snippet || rawText;
+      const expanded = expandMultiOptionPropertyListings(p, snippet);
+      for (const opt of expanded) {
+        postProcessed.push(postProcessListing(opt, snippet));
+      }
+    }
 
     return {
       decision: (parsed.decision === "CONTINUATION" || parsed.decision === "NEW_PROPERTY") ? parsed.decision : (hasContext ? "CONTINUATION" : "NEW_PROPERTY"),

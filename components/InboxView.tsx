@@ -47,9 +47,11 @@ const AVAILABLE_PROPERTY_TYPES = [
 export function InboxView({
   initialListings,
   existingProperties = [],
+  initialError = null,
 }: {
   initialListings: any[];
   existingProperties?: any[];
+  initialError?: string | null;
 }) {
   const t = useTranslations();
   const locale = useLocale();
@@ -63,6 +65,8 @@ export function InboxView({
   const [showFullChat, setShowFullChat] = useState(false);
   const [mergeModalSibling, setMergeModalSibling] = useState<any | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [queryError, setQueryError] = useState<string | null>(initialError);
+  const [lastSyncStatus, setLastSyncStatus] = useState<string | null>(null);
 
   const [formState, setFormState] = useState<any>(
     initialListings[0] ? extractFormData(initialListings[0]) : null
@@ -100,15 +104,25 @@ export function InboxView({
     };
   }, [router]);
 
-  // Tự động quét ngầm mỗi 4 giây để xử lý ngay các đợt gửi vừa qua thời gian gom tin (10s)
+  // Tự động quét ngầm mỗi 5 giây để xử lý các tin nhắn mới và tự động cập nhật danh sách khi có căn mới hoàn tất
   useEffect(() => {
-    const sweep = () => {
-      fetch("/api/inbox/process-batch", { method: "POST" }).catch(() => {});
+    const sweep = async () => {
+      try {
+        const res = await fetch("/api/inbox/process-batch", { method: "POST" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data?.totalProperties > 0 || data?.processedBatches > 0) {
+          setLastSyncStatus(`Vừa xử lý thêm ${data.totalProperties || data.processedBatches} căn mới lúc ${new Date().toLocaleTimeString("vi-VN")}`);
+          router.refresh();
+        }
+      } catch {
+        // Bỏ qua lỗi mạng tạm thời khi quét ngầm
+      }
     };
     sweep();
     const interval = setInterval(sweep, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [router]);
 
   // Tự động kiểm tra BĐS trùng lặp tiềm năng (Duplicate Detection nâng cao)
   const duplicateCandidate = useMemo(() => {
@@ -294,8 +308,17 @@ export function InboxView({
           ? "Theo tháng"
           : (listing.price_period || ""),
       price_text: listing.price_text || listing.ai_extracted?.price_text || "",
-      landlord_commission_text: listing.landlord_commission_text || "",
-      our_share_text: listing.our_share_text || "",
+      landlord_commission_text:
+        listing.landlord_commission_text ||
+        (!/(?:bên\s*mình|huanseek|chia\s*(?:cho\s*)?(?:bên\s*bạn|em|mình))/i.test(rawSnippetForFurn)
+          ? listing.our_share_text || ""
+          : ""),
+      our_share_text:
+        listing.our_share_text &&
+        listing.our_share_text !== listing.landlord_commission_text &&
+        /(?:bên\s*mình|huanseek|chia\s*(?:cho\s*)?(?:bên\s*bạn|em|mình)|trừ\s*\d+%)/i.test(rawSnippetForFurn)
+          ? listing.our_share_text
+          : "",
       furniture_status: extractedStatus,
       furniture_list: extractedList,
       handover_condition: extractedStatus,
@@ -528,14 +551,39 @@ export function InboxView({
   return (
     <div className="space-y-4">
       {/* Page Header */}
-      <div>
-        <h1 className="text-xl font-bold tracking-tight text-slate-900">
-          {t("inbox.pageTitle")}
-        </h1>
-        <p className="text-xs text-slate-500 mt-0.5">
-          {t("inbox.pageSubtitle")}
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight text-slate-900">
+            {t("inbox.pageTitle")}
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {t("inbox.pageSubtitle")}
+          </p>
+        </div>
+        {lastSyncStatus && (
+          <div className="px-3 py-1 rounded-lg bg-sky-50 border border-sky-200 text-sky-800 text-xs font-medium flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-sky-600" />
+            <span>{lastSyncStatus}</span>
+          </div>
+        )}
       </div>
+
+      {/* Báo lỗi truy vấn rõ ràng (Tuyệt đối không ẩn lỗi rồi hiện 0 tin) */}
+      {queryError && (
+        <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-300 text-rose-800 text-xs flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 font-semibold">
+            <AlertTriangle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+            <span>{queryError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            className="px-2.5 py-1 rounded bg-rose-600 text-white font-semibold hover:bg-rose-700 cursor-pointer"
+          >
+            Thử tải lại
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left List of Listings (4 cols) */}
@@ -790,20 +838,73 @@ export function InboxView({
                     <span className="text-[10px] text-slate-400">{t("inbox.editableHint")}</span>
                   </div>
 
-                  {/* Kiểm toán xác thực bằng chứng (Grounding Audit Badge) */}
-                  {selectedListing?.key_details?.grounding_audit && (
-                    <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px]">
-                      <div className="flex items-center gap-1.5 font-medium">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                        <span>Kiểm toán xác thực: 100% bằng chứng trích xuất từ tin nhắn</span>
-                      </div>
-                      {selectedListing.key_details.grounding_audit.citations?.price && (
-                        <span className="text-[10px] text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded font-mono">
-                          Giá: {selectedListing.key_details.grounding_audit.citations.price}
-                        </span>
-                      )}
-                    </div>
-                  )}
+                  {/* Kiểm toán xác thực bằng chứng (Grounding Audit Badge): Chỉ hiện màu xanh khi 100% đủ căn cứ; hiện màu vàng nếu có trường thiếu căn cứ / mâu thuẫn / hoa hồng chưa rõ bên nhận */}
+                  {(() => {
+                    const audit = selectedListing?.key_details?.grounding_audit;
+                    const reasons: string[] = Array.isArray(audit?.confirmation_reasons)
+                      ? [...audit.confirmation_reasons]
+                      : [];
+                    if (!formState.price_amount || Number(formState.price_amount) <= 0) {
+                      if (!reasons.some((r) => r.includes("chưa có giá"))) {
+                        reasons.push("Chưa có giá thuê (cần xác nhận)");
+                      }
+                    }
+                    if (!formState.total_lease_area_m2 || Number(formState.total_lease_area_m2) <= 0) {
+                      if (!reasons.some((r) => r.includes("diện tích"))) {
+                        reasons.push("Chưa rõ tổng diện tích m² (cần xác nhận)");
+                      }
+                    }
+                    if (
+                      formState.landlord_commission_text &&
+                      !formState.our_share_text &&
+                      !reasons.some((r) => r.includes("Hoa hồng"))
+                    ) {
+                      reasons.push(
+                        `Hoa hồng "${formState.landlord_commission_text}" chưa rõ bên nhận (đang giữ nguyên text gốc, để trống phần chia Huanseek)`
+                      );
+                    }
+
+                    const needsConfirm = Boolean(audit?.needs_confirmation) || reasons.length > 0;
+                    if (needsConfirm) {
+                      return (
+                        <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-[11px] space-y-1">
+                          <div className="flex items-center justify-between gap-2 font-semibold">
+                            <div className="flex items-center gap-1.5">
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                              <span>Cần người duyệt kiểm tra / xác nhận ({reasons.length} mục):</span>
+                            </div>
+                            {formState.price_text && (
+                              <span className="text-[10px] text-amber-800 bg-amber-100 px-2 py-0.5 rounded font-mono">
+                                Giá gốc: {formState.price_text}
+                              </span>
+                            )}
+                          </div>
+                          <ul className="list-disc list-inside text-[11px] text-amber-800 space-y-0.5">
+                            {reasons.map((r, idx) => (
+                              <li key={idx}>{r}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      );
+                    }
+
+                    if (audit) {
+                      return (
+                        <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px]">
+                          <div className="flex items-center gap-1.5 font-medium">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                            <span>Đã đối chiếu khớp văn bản gốc tin nhắn</span>
+                          </div>
+                          {audit.citations?.price && (
+                            <span className="text-[10px] text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded font-mono">
+                              Giá: {audit.citations.price}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
 
                   {/* Cảnh báo BĐS trùng lặp tiềm năng (Duplicate Detection Alert) */}
                   {duplicateCandidate && (
