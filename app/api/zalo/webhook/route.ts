@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import crypto from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { downloadAndPersistZaloImage } from "@/lib/storage/r2";
 import { fetchAndSyncZaloUserProfile } from "@/lib/zalo/profile";
-import { processBatchSubmission } from "@/lib/zalo/batch-processor";
+import { processPendingSubmissionsQueue } from "@/lib/zalo/batch-processor";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -100,13 +99,11 @@ export async function POST(req: NextRequest) {
     let textContent: string | null = null;
     let imageUrls: string[] = [];
 
-    // Parse các loại sự kiện tin nhắn
     if (eventName === "user_send_text") {
       msgType = "text";
       textContent = message.text || null;
     } else if (eventName === "user_send_image") {
       msgType = "image";
-      // Bỏ qua việc tải ảnh xuống R2 theo định hướng kho dữ liệu thuần text
       textContent = message.text || null;
       imageUrls = [];
     } else if (eventName === "user_send_file") {
@@ -116,7 +113,7 @@ export async function POST(req: NextRequest) {
       msgType = "sticker";
     }
 
-    // Lưu ngay lập tức vào database qua Supabase RPC ingest_zalo_message
+    // Lưu ngay lập tức vào database qua Supabase RPC ingest_zalo_message (1 tin nhắn = 1 submission độc lập)
     if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
       const supabaseAdmin = createAdminClient();
 
@@ -142,21 +139,9 @@ export async function POST(req: NextRequest) {
       }
 
       const subId = (ingestResult as any)?.submission_id;
+      const originUrl = req.nextUrl.origin;
 
-      // Gia hạn Cửa sổ gom tin văn bản (Debounce Window 20 giây) cho đợt gửi này
-      if (subId) {
-        const debouncedCloseAt = new Date(Date.now() + 20 * 1000).toISOString();
-        await supabaseAdmin
-          .from("submissions")
-          .update({
-            close_at: debouncedCloseAt,
-            ai_status: "pending",
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", subId);
-      }
-
-      // Xử lý ngầm sau khi trả lời nhanh cho Zalo (Next.js 16 after)
+      // Xử lý ngay lập tức sau khi trả lời HTTP 200 cho Zalo (0 giây chờ gom)
       after(async () => {
         try {
           const supabaseAdmin = createAdminClient();
@@ -174,41 +159,17 @@ export async function POST(req: NextRequest) {
             );
           }
 
-          // 2. Chờ 21.5 giây (vừa đủ vượt qua debounce 20s) để tự động bóc tách
-          if (subId) {
-            await new Promise((resolve) => setTimeout(resolve, 21500));
-            try {
-              const sAdmin = createAdminClient();
-              const { data: curSub } = await sAdmin
-                .from("submissions")
-                .select("id, status, close_at, ai_status")
-                .eq("id", subId)
-                .single();
-
-              // Nếu submission chưa xong và không đang được tiến trình khác xử lý
-              if (
-                curSub &&
-                curSub.ai_status !== "done" &&
-                curSub.ai_status !== "processing"
-              ) {
-                const closeAtMs = new Date(curSub.close_at).getTime();
-                // Chỉ kích hoạt nếu đã qua close_at (không có tin mới gửi thêm trong 20s)
-                if (Date.now() >= closeAtMs - 1000) {
-                  console.log(`[Webhook Background Worker] Đã đủ thời gian gom tin (20s), kích hoạt bóc tách batch ${subId}...`);
-                  await processBatchSubmission(subId);
-                }
-              }
-            } catch (timerErr) {
-              console.error("[Webhook Background Worker Error]:", timerErr);
-            }
-          }
+          // 2. Kích hoạt hàng đợi cuốn chiếu từng tin nhắn (nghỉ 1.5s giữa các lượt + chạy lại tin lỗi 1-2 lần ở cuối phiên)
+          await processPendingSubmissionsQueue({
+            originUrl,
+            specificSubmissionId: subId || null,
+          });
         } catch (bgErr) {
           console.error("[Webhook Background Task Error]:", bgErr);
         }
       });
     }
 
-    // Trả lời HTTP 200 OK ngay lập tức cho Zalo (< 50ms)
     return NextResponse.json({ error: 0, message: "success" }, { status: 200 });
   } catch (err: any) {
     console.error("Webhook processing error:", err);
@@ -219,6 +180,6 @@ export async function POST(req: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     status: "active",
-    service: "Huanseek Zalo OA Webhook Ingestion API (Debounced Batch Architecture)",
+    service: "Huanseek Zalo OA Webhook Ingestion API (Per-Message Immediate AI Queue Architecture)",
   });
 }

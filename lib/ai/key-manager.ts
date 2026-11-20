@@ -101,17 +101,17 @@ export function getKeyPoolStatus() {
 }
 
 /**
- * Danh sách các Model Gemini ưu tiên: thế hệ 3.x siêu tốc độ và thông minh nhất
+ * Danh sách các Model Gemini ưu tiên: Chỉ sử dụng thế hệ 3.x (Tuyệt đối không dùng 2.x)
  */
 export const GEMINI_3X_MODELS = Array.from(
   new Set([
-    process.env.GEMINI_MODEL || "gemini-3-flash-preview",
+    process.env.GEMINI_MODEL || "gemini-3.6-flash",
+    "gemini-3.6-flash",
     "gemini-3-flash-preview",
     "gemini-3.1-flash-lite",
-    "gemini-3.6-flash",
-    "gemini-2.5-flash",
+    "gemini-flash-latest",
   ])
-).filter(Boolean);
+).filter((m) => Boolean(m) && !m.includes("2."));
 
 /**
  * Thực thi gọi Gemini API với cơ chế Xoay tua Đa Key & Thử lại Model Fallback

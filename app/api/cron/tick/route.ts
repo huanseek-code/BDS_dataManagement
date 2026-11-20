@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { processBatchSubmission } from "@/lib/zalo/batch-processor";
+import { processPendingSubmissionsQueue } from "@/lib/zalo/batch-processor";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -18,7 +17,6 @@ async function handleCronTick(req: NextRequest) {
     const cronSecret = process.env.CRON_SECRET;
     const authHeader = req.headers.get("x-cron-secret") || req.headers.get("authorization");
 
-    // Nếu đã cấu hình cron secret, kiểm tra bảo mật
     if (cronSecret && authHeader) {
       const token = authHeader.replace(/^Bearer\s+/i, "").trim();
       if (token !== cronSecret) {
@@ -33,60 +31,16 @@ async function handleCronTick(req: NextRequest) {
       });
     }
 
-    const supabaseAdmin = createAdminClient();
-
-    // 1. Quét và chốt các khung tin nhắn đã hết thời gian gom qua RPC
-    const { data: closedSubmissions, error: closeError } = await supabaseAdmin.rpc(
-      "close_expired_submissions"
-    );
-
-    if (closeError) {
-      console.error("Error closing expired submissions:", closeError);
-    }
-
-    // 2. Tìm tất cả các submissions đang 'queued' hoặc 'collecting' mà đã qua thời điểm close_at
-    const nowIso = new Date().toISOString();
-    const twoMinutesAgoIso = new Date(Date.now() - 2 * 60 * 1000).toISOString();
-
-    const { data: queuedSubs } = await supabaseAdmin
-      .from("submissions")
-      .select("id, status, ai_status, updated_at")
-      .in("status", ["queued", "collecting"])
-      .neq("ai_status", "done")
-      .lte("close_at", nowIso)
-      .limit(10);
-
-    const targetSubIds = new Set<string>();
-    for (const cs of closedSubmissions || []) {
-      if (cs.submission_id) targetSubIds.add(cs.submission_id);
-    }
-    for (const qs of queuedSubs || []) {
-      // Nếu đang processing nhưng chưa quá 2 phút thì để tiến trình đó chạy tiếp
-      if (qs.ai_status === "processing") {
-        const isStuck = !qs.updated_at || new Date(qs.updated_at).getTime() < Date.now() - 2 * 60 * 1000;
-        if (!isStuck) continue;
-      }
-      if (qs.id) targetSubIds.add(qs.id);
-    }
-
-    let processedCount = 0;
-    for (const subId of targetSubIds) {
-      try {
-        console.log(`[Cron Tick] Đang xử lý đợt gom tin nhắn: ${subId}`);
-        const res = await processBatchSubmission(subId);
-        if (res.success) {
-          processedCount++;
-        }
-      } catch (subErr) {
-        console.error(`[Cron Tick] Lỗi xử lý submission ${subId}:`, subErr);
-      }
-    }
+    const res = await processPendingSubmissionsQueue({
+      originUrl: req.nextUrl.origin,
+    });
 
     return NextResponse.json({
       status: "success",
       timestamp: new Date().toISOString(),
-      closed_submissions_count: targetSubIds.size,
-      processed_count: processedCount,
+      processed_count: res.processedCount,
+      retried_success_count: res.retriedSuccessCount,
+      total_properties: res.totalProperties,
     });
   } catch (err: any) {
     console.error("Cron tick error:", err);

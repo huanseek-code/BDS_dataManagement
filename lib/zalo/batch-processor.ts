@@ -1,18 +1,20 @@
 import "server-only";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { fetchZaloConversation } from "./conversation";
 import { extractBatchPropertiesFromTimeline, BatchTimelineItem } from "@/lib/ai/batch-extract";
+import { getGeminiApiKeys } from "@/lib/ai/key-manager";
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Xử lý Batch gom cụm văn bản:
- * 1. Thu thập toàn bộ tin nhắn văn bản từ đối tác (Zalo API + Local DB)
- * 2. Lọc bỏ các tin nhắn văn bản trùng lặp (Deduplication)
- * 3. Đưa toàn bộ dòng thời gian cho Gemini phân tích đa căn (Multi-Property Text Extraction)
- * 4. Tạo bản nháp sạch vào property_listings (kho dữ liệu thuần text)
+ * Xử lý 1 tin nhắn BĐS độc lập (1 tin nhắn = 1 submission = 1 lệnh AI riêng biệt):
+ * 1. Lấy đúng nội dung văn bản của tin nhắn thuộc submissionId này (không trộn lẫn tin khác).
+ * 2. Gọi Gemini 3.x bóc tách chuẩn xác thông tin BĐS trong tin nhắn đó.
+ * 3. Lưu vào property_listings (Hộp thư chờ duyệt).
  */
 export async function processBatchSubmission(
-  submissionId: string
+  submissionId: string,
+  isRetryPass: boolean = false
 ): Promise<{ success: boolean; propertyCount: number; message: string }> {
   const supabase = createAdminClient();
 
@@ -32,13 +34,13 @@ export async function processBatchSubmission(
     return { success: true, propertyCount: 0, message: "Submission đã được xử lý hoàn tất trước đó" };
   }
 
-  // Nếu đang được xử lý và chưa bị treo quá 2 phút -> Bỏ qua để tránh xung đột
+  // Nếu đang được tiến trình khác xử lý và chưa quá 45 giây -> Bỏ qua để tránh chạy đè
   if (
+    !isRetryPass &&
     submission.ai_status === "processing" &&
     submission.updated_at &&
-    new Date(submission.updated_at).getTime() > Date.now() - 2 * 60 * 1000
+    new Date(submission.updated_at).getTime() > Date.now() - 45 * 1000
   ) {
-    console.log(`[Batch Processor] Submission ${submissionId} đang được xử lý bởi tiến trình khác, bỏ qua.`);
     return { success: true, propertyCount: 0, message: "Submission đang được xử lý bởi tiến trình khác" };
   }
 
@@ -61,58 +63,28 @@ export async function processBatchSubmission(
   }
 
   try {
-    // 3. Lấy tin nhắn từ cơ sở dữ liệu nội bộ (zalo_incoming_chats)
+    // 3. Chỉ lấy đúng tin nhắn thuộc submissionId này trong zalo_incoming_chats (1 tin nhắn = 1 lệnh AI độc lập)
     const { data: localChats } = await supabase
       .from("zalo_incoming_chats")
       .select("*")
       .eq("submission_id", submissionId)
       .order("created_at", { ascending: true });
 
-    // 4. Gọi API Lịch sử hội thoại của Zalo OA để lấy thêm tin nhắn văn bản nếu có
-    const zaloConvMessages = await fetchZaloConversation(partner.zalo_user_id, 30);
-
-    // 5. Kết hợp & Sắp xếp dòng thời gian văn bản chuẩn
     const timelineItems: BatchTimelineItem[] = [];
-    const processedMsgIds = new Set<string>();
-
-    // 5a. Ưu tiên các tin nhắn văn bản lấy được từ API hội thoại Zalo
-    if (zaloConvMessages && zaloConvMessages.length > 0) {
-      const subStartTime = submission.first_msg_at ? new Date(submission.first_msg_at).getTime() - 2 * 60 * 1000 : 0;
-      const relevantZaloMsgs = zaloConvMessages.filter((m) => m.time >= subStartTime);
-
-      for (const zm of relevantZaloMsgs) {
-        processedMsgIds.add(zm.msg_id);
-
-        if (zm.type === "text" && zm.text && zm.text.trim().length > 0) {
-          timelineItems.push({
-            msg_id: zm.msg_id,
-            time: zm.time,
-            sent_time: zm.sent_time,
-            type: "text",
-            text: zm.text,
-          });
-        }
-      }
-    }
-
-    // 5b. Bổ sung các tin nhắn văn bản từ local chats nếu chưa có
     for (const lc of localChats || []) {
-      if (!processedMsgIds.has(lc.zalo_msg_id)) {
-        const sentTimeMs = lc.sent_at ? new Date(lc.sent_at).getTime() : new Date(lc.created_at).getTime();
-
-        if (lc.text_content && lc.text_content.trim().length > 0) {
-          timelineItems.push({
-            msg_id: lc.zalo_msg_id,
-            time: sentTimeMs,
-            sent_time: new Date(sentTimeMs).toLocaleTimeString("vi-VN"),
-            type: "text",
-            text: lc.text_content,
-          });
-        }
+      const sentTimeMs = lc.sent_at ? new Date(lc.sent_at).getTime() : new Date(lc.created_at).getTime();
+      if (lc.text_content && lc.text_content.trim().length > 0) {
+        timelineItems.push({
+          msg_id: lc.zalo_msg_id,
+          time: sentTimeMs,
+          sent_time: new Date(sentTimeMs).toLocaleTimeString("vi-VN"),
+          type: "text",
+          text: lc.text_content,
+        });
       }
     }
 
-    // 5c. Dự phòng: Nếu timelineItems rỗng nhưng submission.raw_text có nội dung thì lấy trực tiếp từ raw_text
+    // Dự phòng từ raw_text của chính submission đó
     if (timelineItems.length === 0 && submission.raw_text && submission.raw_text.trim().length > 0) {
       const subTime = submission.first_msg_at ? new Date(submission.first_msg_at).getTime() : Date.now();
       timelineItems.push({
@@ -124,48 +96,42 @@ export async function processBatchSubmission(
       });
     }
 
-    // Sắp xếp lại toàn bộ dòng thời gian chuẩn theo thời điểm gửi (tăng dần)
-    timelineItems.sort((a, b) => a.time - b.time);
-
-    // 5c. Khử trùng lặp các tin nhắn text giống hệt nhau gửi dồn dập
-    const seenTexts = new Set<string>();
-    const deduplicatedTimeline: BatchTimelineItem[] = [];
-    for (const item of timelineItems) {
-      const normalized = (item.text || "").trim().toLowerCase();
-      if (!seenTexts.has(normalized)) {
-        seenTexts.add(normalized);
-        deduplicatedTimeline.push(item);
-      }
-    }
-
-    if (deduplicatedTimeline.length === 0) {
+    if (timelineItems.length === 0) {
       await supabase
         .from("submissions")
         .update({ status: "done", ai_status: "done", ai_mode: "ai" })
         .eq("id", submissionId);
-      return { success: true, propertyCount: 0, message: "Batch không có nội dung văn bản BĐS" };
+      return { success: true, propertyCount: 0, message: "Tin nhắn không có nội dung văn bản BĐS" };
     }
 
-    // 6. Gửi dòng thời gian văn bản cho AI bóc tách đa căn (Multi-Property Text Extraction)
-    console.log(`[Batch Processor] Bắt đầu phân tích batch ${submissionId} gồm ${deduplicatedTimeline.length} đoạn văn bản...`);
-    const batchResult = await extractBatchPropertiesFromTimeline(deduplicatedTimeline);
+    // 4. Gọi câu lệnh AI riêng biệt cho tin nhắn này
+    console.log(`[Per-Message AI] Đang bóc tách tin nhắn ${submissionId}${isRetryPass ? " (Chạy lại tin lỗi)" : ""}...`);
+    const batchResult = await extractBatchPropertiesFromTimeline(timelineItems);
 
     let insertedCount = 0;
 
-    // Xoá các bản nháp cũ của submission này (nếu có do retry) để đảm bảo không bị nhân bản trùng
+    // Xóa bản nháp cũ của submission này (nếu có do retry)
     await supabase
       .from("property_listings")
       .delete()
       .eq("submission_id", submissionId)
       .eq("review_status", "pending");
 
-    // 7. Lưu từng căn BĐS độc lập vào property_listings (kho dữ liệu thuần text)
+    // 5. Lưu kết quả bóc tách vào property_listings
     if (batchResult.properties.length > 0) {
       for (const prop of batchResult.properties) {
         const cleanSnippet = String(prop.source_text_snippet || submission.raw_text || "")
           .replace(/\\r\\n/g, "\n")
           .replace(/\\n/g, "\n")
           .replace(/\\r/g, "");
+
+        const rawBasis = String(prop.price_basis || "").toLowerCase();
+        const normalizedBasis =
+          rawBasis === "per_m2" || rawBasis.includes("m2") || rawBasis.includes("m²")
+            ? "per_m2"
+            : rawBasis === "per_floor" || rawBasis.includes("sàn") || rawBasis.includes("tầng")
+            ? "per_floor"
+            : "total";
 
         await supabase.from("property_listings").insert({
           submission_id: submissionId,
@@ -183,7 +149,7 @@ export async function processBatchSubmission(
           price_amount: prop.price_amount || null,
           price_currency: prop.price_currency || "VND",
           price_period: prop.price_period || null,
-          price_basis: (prop.price_basis === "per_m2" || String(prop.price_basis).toLowerCase().includes("m2") || String(prop.price_basis).toLowerCase().includes("m²")) ? "per_m2" : "total",
+          price_basis: normalizedBasis,
           price_text: prop.price_text || null,
           key_details: {
             ...((prop.key_details || {}) as any),
@@ -196,62 +162,41 @@ export async function processBatchSubmission(
           our_share_percent: prop.our_share_percent || null,
           our_share_text: prop.our_share_text || null,
           location_note: cleanSnippet,
-          attachments: [], // Kho dữ liệu thuần text
+          attachments: [],
           ai_extracted: prop as any,
           change_history: [{ created_at: new Date().toISOString(), text: cleanSnippet || "Bóc tách văn bản từ Zalo OA" }],
         });
         insertedCount++;
       }
-    } else {
-      // Trường hợp dự phòng nếu AI không phát hiện ra căn nào
-      const textOnly = deduplicatedTimeline.map((t) => t.text).join("\n\n")
-        .replace(/\\r\\n/g, "\n")
-        .replace(/\\n/g, "\n")
-        .replace(/\\r/g, "");
-
-      await supabase.from("property_listings").insert({
-        submission_id: submissionId,
-        partner_id: partner.id,
-        review_status: "pending",
-        address_text: textOnly.slice(0, 80) || "Đợt gửi từ Zalo OA",
-        location_note: textOnly || "Không trích xuất được BĐS",
-        attachments: [],
-        key_details: {
-          vi: textOnly || "Nội dung văn bản",
-          en: textOnly || "Text content",
-          zh: textOnly || "文本内容",
-        },
-        change_history: [{ created_at: new Date().toISOString(), text: textOnly || "Đợt gửi văn bản" }],
-      });
-      insertedCount++;
     }
 
-    // 8. Đánh dấu hoàn tất submission
+    // 6. Đánh dấu hoàn tất submission
     await supabase
       .from("submissions")
       .update({
         status: "done",
         ai_status: "done",
+        ai_error: null,
         ai_mode: "ai",
-        ai_model: process.env.GEMINI_MODEL || "gemini-flash-latest",
+        ai_model: process.env.GEMINI_MODEL || "gemini-3.6-flash",
         updated_at: new Date().toISOString(),
       })
       .eq("id", submissionId);
 
-    console.log(`[Batch Processor] Hoàn tất batch ${submissionId}: Đã tạo ${insertedCount} căn BĐS sạch.`);
+    console.log(`[Per-Message AI] Hoàn tất tin nhắn ${submissionId}: Tạo ${insertedCount} căn BĐS.`);
     try {
       revalidatePath("/inbox");
     } catch {
-      // Bỏ qua khi hàm chạy ngầm ngoài request lifecycle của Next.js
+      // Bỏ qua nếu ngoài request lifecycle
     }
 
     return {
       success: true,
       propertyCount: insertedCount,
-      message: `Đã xử lý thành công đợt gửi: tạo ${insertedCount} căn BĐS.`,
+      message: `Đã xử lý thành công tin nhắn: tạo ${insertedCount} căn BĐS.`,
     };
   } catch (err: any) {
-    console.error(`[Batch Processor] Lỗi xử lý batch ${submissionId}:`, err);
+    console.error(`[Per-Message AI] Lỗi xử lý tin nhắn ${submissionId}:`, err?.message || err);
     await supabase
       .from("submissions")
       .update({
@@ -260,6 +205,141 @@ export async function processBatchSubmission(
         updated_at: new Date().toISOString(),
       })
       .eq("id", submissionId);
-    return { success: false, propertyCount: 0, message: err?.message || "Lỗi xử lý batch" };
+    return { success: false, propertyCount: 0, message: err?.message || "Lỗi xử lý tin nhắn" };
   }
+}
+
+/**
+ * Bộ điều phối Hàng đợi Cuốn chiếu cho từng tin nhắn (Per-Message Wave Queue + End-of-Session Retry):
+ * 1. Xử lý lần lượt từng lượt (mỗi lượt 1-2 tin tùy số API Key).
+ * 2. Sau mỗi lượt nghỉ 1.5 giây (1500ms) rồi mới sang lượt tiếp theo để chống nghẽn Rate Limit.
+ * 3. Cuối phiên (sau khi hoàn tất 1 lượt toàn bộ tin mới): Tự động chạy lại các tin bị lỗi (failed) tối đa 2 lần.
+ * 4. Tự nối dây chuyền (Self-Chaining) nếu số lượng tin quá lớn để không bao giờ vướng giới hạn thời gian Server.
+ */
+export async function processPendingSubmissionsQueue(options?: {
+  originUrl?: string;
+  specificSubmissionId?: string | null;
+}): Promise<{
+  processedCount: number;
+  retriedSuccessCount: number;
+  totalProperties: number;
+}> {
+  const supabase = createAdminClient();
+  const startTimeMs = Date.now();
+  const MAX_SAFE_RUNTIME_MS = 28000; // Tự chuyển tiếp dây chuyền nếu chạy quá 28 giây
+  const WAVE_DELAY_MS = 1500; // Nghỉ 1.5 giây giữa các lượt theo đúng yêu cầu
+  const RETRY_DELAY_MS = 2000; // Nghỉ 2 giây trước khi chạy lại tin lỗi cuối phiên
+
+  const keyCount = Math.max(getGeminiApiKeys().length, 1);
+  const waveSize = Math.min(keyCount, 2); // Mỗi lượt 1-2 tin nhắn song song
+
+  let processedCount = 0;
+  let retriedSuccessCount = 0;
+  let totalProperties = 0;
+  const failedInThisSession = new Set<string>();
+
+  // 1. Lấy danh sách các tin nhắn đang chờ xử lý (theo thứ tự gửi từ cũ đến mới)
+  const { data: pendingSubs } = await supabase
+    .from("submissions")
+    .select("id, ai_status, updated_at, created_at")
+    .in("status", ["queued", "collecting"])
+    .neq("ai_status", "done")
+    .order("created_at", { ascending: true })
+    .limit(40);
+
+  const queueIds: string[] = [];
+  if (options?.specificSubmissionId) {
+    queueIds.push(options.specificSubmissionId);
+  }
+
+  for (const sub of pendingSubs || []) {
+    if (queueIds.includes(sub.id)) continue;
+    if (sub.ai_status === "processing") {
+      const isStuck = !sub.updated_at || new Date(sub.updated_at).getTime() < Date.now() - 45 * 1000;
+      if (!isStuck) continue;
+    }
+    if (sub.ai_status === "failed") {
+      failedInThisSession.add(sub.id);
+      continue;
+    }
+    queueIds.push(sub.id);
+  }
+
+  // 2. VÒNG LẶP CHÍNH: Xử lý cuốn chiếu từng lượt + nghỉ 1.5 giây giữa các lượt
+  for (let i = 0; i < queueIds.length; i += waveSize) {
+    const waveIds = queueIds.slice(i, i + waveSize);
+    const results = await Promise.all(waveIds.map((id) => processBatchSubmission(id, false)));
+
+    for (let idx = 0; idx < results.length; idx++) {
+      const res = results[idx];
+      const sid = waveIds[idx];
+      if (res.success) {
+        processedCount++;
+        totalProperties += res.propertyCount;
+      } else {
+        failedInThisSession.add(sid);
+      }
+    }
+
+    // Nếu còn lượt tiếp theo: Kiểm tra thời gian hoặc nghỉ 1.5 giây trước khi sang lượt kế tiếp
+    if (i + waveSize < queueIds.length) {
+      if (Date.now() - startTimeMs >= MAX_SAFE_RUNTIME_MS) {
+        triggerNextQueueChain(options?.originUrl);
+        return { processedCount, retriedSuccessCount, totalProperties };
+      }
+      await sleep(WAVE_DELAY_MS);
+    }
+  }
+
+  // 3. CUỐI PHIÊN: Sau khi hoàn thành xong 1 lượt tất cả các tin, chạy lại các tin bị lỗi 1 - 2 lần nữa
+  let remainingFailedIds = Array.from(failedInThisSession);
+  for (let retryRound = 1; retryRound <= 2 && remainingFailedIds.length > 0; retryRound++) {
+    if (Date.now() - startTimeMs >= MAX_SAFE_RUNTIME_MS) {
+      triggerNextQueueChain(options?.originUrl);
+      return { processedCount, retriedSuccessCount, totalProperties };
+    }
+
+    console.log(
+      `[Per-Message Queue] Cuối phiên - Chạy lại lần ${retryRound}/2 cho ${remainingFailedIds.length} tin bị lỗi...`
+    );
+    await sleep(RETRY_DELAY_MS);
+
+    const stillFailed: string[] = [];
+    for (const failedId of remainingFailedIds) {
+      if (Date.now() - startTimeMs >= MAX_SAFE_RUNTIME_MS) {
+        stillFailed.push(failedId);
+        continue;
+      }
+      const retryRes = await processBatchSubmission(failedId, true);
+      if (retryRes.success) {
+        retriedSuccessCount++;
+        processedCount++;
+        totalProperties += retryRes.propertyCount;
+      } else {
+        stillFailed.push(failedId);
+      }
+      await sleep(1000);
+    }
+    remainingFailedIds = stillFailed;
+  }
+
+  // Nếu sau 2 lần retry cuối phiên vẫn còn tin lỗi không thể phục hồi, đóng trạng thái để không treo vòng lặp vô hạn
+  if (remainingFailedIds.length > 0) {
+    await supabase
+      .from("submissions")
+      .update({ status: "failed", updated_at: new Date().toISOString() })
+      .in("id", remainingFailedIds);
+  }
+
+  return { processedCount, retriedSuccessCount, totalProperties };
+}
+
+function triggerNextQueueChain(originUrl?: string) {
+  if (!originUrl) return;
+  console.log("[Per-Message Queue] Tự động kích hoạt tiến trình nối tiếp để xử lý nốt hàng đợi...");
+  fetch(`${originUrl}/api/inbox/process-batch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chained: true }),
+  }).catch((err) => console.error("[Per-Message Queue Chain Error]:", err));
 }
