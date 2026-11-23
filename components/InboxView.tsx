@@ -1187,7 +1187,7 @@ export function InboxView({
                       <div className="pt-2 mt-2 border-t border-dashed border-slate-200 space-y-1.5">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-semibold text-slate-500">
-                            Mức giá thứ 2 / Đơn giá theo phòng (chỉ điền khi tin có 2 mức giá như 4tr1/p &amp; 49,2tr):
+                            Mức giá thứ 2 / Đơn giá theo phòng (chỉ điền khi tin có 2 mức giá):
                           </span>
                         </div>
                         <div className="grid grid-cols-3 gap-2">
@@ -1199,7 +1199,7 @@ export function InboxView({
                               onChange={(e) =>
                                 setFormState({ ...formState, secondary_price_amount: e.target.value })
                               }
-                              placeholder="Để trống nếu chỉ có 1 mức giá (VD: 4100000)"
+                              placeholder="Để trống nếu chỉ có 1 mức giá..."
                               className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500"
                             />
                           </div>
