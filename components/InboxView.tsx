@@ -308,11 +308,58 @@ export function InboxView({
           ? "Theo tháng"
           : (listing.price_period || ""),
       price_text: listing.price_text || listing.ai_extracted?.price_text || "",
-      landlord_commission_text:
-        listing.landlord_commission_text ||
-        (!/(?:bên\s*mình|huanseek|chia\s*(?:cho\s*)?(?:bên\s*bạn|em|mình))/i.test(rawSnippetForFurn)
-          ? listing.our_share_text || ""
+      secondary_price_amount:
+        listing.key_details?.secondary_price_amount ||
+        listing.ai_extracted?.secondary_price_amount ||
+        (() => {
+          const m = rawSnippetForFurn.match(
+            /(\d+(?:[.,]\d+)?)\s*(tr|triệu|trieu|củ)(\d{1,3})?\s*\/\s*(?:1\s*)?(p|phòng|phong|pkk)\b[^\n(]{0,20}\(\s*(?:tổng\s*)?(\d+(?:[.,]\d+)?)\s*(tr|triệu|trieu|củ|tỷ|ty)/i
+          );
+          if (m) {
+            const major = parseFloat(m[1].replace(",", "."));
+            const minor = m[3] ? parseInt(m[3], 10) / Math.pow(10, m[3].length) : 0;
+            return Math.round((major + minor) * 1000000);
+          }
+          return "";
+        })(),
+      secondary_price_currency:
+        listing.key_details?.secondary_price_currency ||
+        listing.ai_extracted?.secondary_price_currency ||
+        "VND",
+      secondary_price_basis_text:
+        listing.key_details?.secondary_price_basis_text ||
+        listing.ai_extracted?.secondary_price_basis_text ||
+        (/(\d+(?:[.,]\d+)?)\s*(?:tr|triệu|trieu|củ)(?:\d{1,3})?\s*\/\s*(?:1\s*)?(?:p|phòng|phong|pkk)\b/i.test(
+          rawSnippetForFurn
+        )
+          ? "Theo phòng"
           : ""),
+      secondary_price_period_text:
+        listing.key_details?.secondary_price_period ||
+        listing.ai_extracted?.secondary_price_period ||
+        "",
+      landlord_commission_text: (() => {
+        const rawCommMatch = rawSnippetForFurn.match(
+          /(?:🌹\s*)?(?:hoa\s*hồng(?:\s*sale|\s*chủ\s*nhà|\s*khách)?|\bhh(?:\s*sale|\s*chủ\s*nhà|\s*khách)?|phí\s*(?:môi\s*giới|mô\s*giới|mg|sale|khách)?|\bmg)\s*[:=-]?\s*(\d+[^\r\n]*)/i
+        );
+        const fullFromSnippet = rawCommMatch
+          ? rawCommMatch[0].replace(/^🌹\s*/, "").trim().replace(/^[;,\s:-]+|[;,\s.-]+$/g, "")
+          : "";
+        const storedComm =
+          listing.landlord_commission_text ||
+          (!/(?:bên\s*mình|huanseek|chia\s*(?:cho\s*)?(?:bên\s*bạn|em|mình))/i.test(rawSnippetForFurn)
+            ? listing.our_share_text || ""
+            : "");
+        if (
+          fullFromSnippet &&
+          (!storedComm ||
+            (fullFromSnippet.length > storedComm.trim().length &&
+              /khi\s+giao\s+dịch|thành\s+công/i.test(fullFromSnippet)))
+        ) {
+          return fullFromSnippet;
+        }
+        return storedComm;
+      })(),
       our_share_text:
         listing.our_share_text &&
         listing.our_share_text !== listing.landlord_commission_text &&
@@ -384,6 +431,14 @@ export function InboxView({
               furniture_status: formState.furniture_status || formState.handover_condition || null,
               furniture_list: formState.furniture_list || "",
               handover_condition: formState.furniture_status || formState.handover_condition || null,
+              secondary_price_amount: formState.secondary_price_amount
+                ? Number(formState.secondary_price_amount)
+                : null,
+              secondary_price_currency: formState.secondary_price_amount
+                ? formState.secondary_price_currency || "VND"
+                : null,
+              secondary_price_basis_text: formState.secondary_price_basis_text || null,
+              secondary_price_period: formState.secondary_price_period_text || null,
             },
           },
         }),
@@ -1070,7 +1125,7 @@ export function InboxView({
                         </div>
                       </div>
 
-                      {/* Cơ sở tính giá & Kỳ hạn (Dòng text thuần túy) */}
+                      {/* Cơ sở tính giá & Kỳ hạn - Hàng 1 (Dòng text thuần túy) */}
                       <div className="grid grid-cols-2 gap-2 pt-1">
                         <div>
                           <label className="text-[10px] font-semibold text-slate-500 block mb-0.5">
@@ -1125,6 +1180,70 @@ export function InboxView({
                             placeholder="Theo tháng / Theo năm / Một lần..."
                             className="w-full px-2 py-1 text-xs rounded border border-slate-200 bg-white text-slate-700 font-medium focus:ring-2 focus:ring-sky-500"
                           />
+                        </div>
+                      </div>
+
+                      {/* HÀNG 2: Mức giá thứ 2 / Đơn giá theo phòng đi kèm (Nếu tin chỉ có 1 mức giá thì hàng này để trống) */}
+                      <div className="pt-2 mt-2 border-t border-dashed border-slate-200 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-semibold text-slate-500">
+                            Mức giá thứ 2 / Đơn giá theo phòng (chỉ điền khi tin có 2 mức giá như 4tr1/p &amp; 49,2tr):
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="col-span-2">
+                            <input
+                              type="number"
+                              step="any"
+                              value={formState.secondary_price_amount ?? ""}
+                              onChange={(e) =>
+                                setFormState({ ...formState, secondary_price_amount: e.target.value })
+                              }
+                              placeholder="Để trống nếu chỉ có 1 mức giá (VD: 4100000)"
+                              className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500"
+                            />
+                          </div>
+                          <div>
+                            <input
+                              type="text"
+                              value={formState.secondary_price_currency || "VND"}
+                              onChange={(e) =>
+                                setFormState({ ...formState, secondary_price_currency: e.target.value })
+                              }
+                              placeholder="VND"
+                              className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 bg-white font-semibold text-slate-800 focus:ring-2 focus:ring-emerald-500"
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] font-semibold text-slate-500 block mb-0.5">
+                              Cách tính giá (Hàng 2)
+                            </label>
+                            <input
+                              type="text"
+                              value={formState.secondary_price_basis_text ?? ""}
+                              onChange={(e) =>
+                                setFormState({ ...formState, secondary_price_basis_text: e.target.value })
+                              }
+                              placeholder="Theo phòng / Theo tầng/sàn / Theo m²..."
+                              className="w-full px-2 py-1 text-xs rounded border border-slate-200 bg-white text-slate-700 font-medium focus:ring-2 focus:ring-sky-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-semibold text-slate-500 block mb-0.5">
+                              Kỳ hạn giá (Hàng 2)
+                            </label>
+                            <input
+                              type="text"
+                              value={formState.secondary_price_period_text ?? ""}
+                              onChange={(e) =>
+                                setFormState({ ...formState, secondary_price_period_text: e.target.value })
+                              }
+                              placeholder="Theo tháng / Theo năm / Một lần..."
+                              className="w-full px-2 py-1 text-xs rounded border border-slate-200 bg-white text-slate-700 font-medium focus:ring-2 focus:ring-sky-500"
+                            />
+                          </div>
                         </div>
                       </div>
 

@@ -505,6 +505,29 @@ Gồm: 4 phòng ngủ x 3 WC, bếp
       assert.equal(res.key_details.grounding_audit.needs_confirmation, true);
     },
   },
+  {
+    id: "TC23",
+    group: "Giá kép (Hàng 1 Tổng giá + Hàng 2 Giá theo phòng) & Giữ điều kiện phí 'khi giao dịch thành công'",
+    title: "Khu VIP Tây Hồ: '4tr1/p (49,2tr)' -> Hàng 1: 49,2 triệu (Tổng căn) + Hàng 2: 4,1 triệu (Theo phòng) & Giữ nguyên 'Phí khách: 15tr. khi giao dịch thành công'",
+    rawText: `NHƯỢNG NHÀ NGHỈ Ở KHU VÍP TÂY HỒ
+- Diện tích: 79m2 x 5 tầng
+- Tổng: 12pkk
+- Nội thất: đầy đủ nhà nghỉ
+- Giá thuê: 4tr1/p (49,2tr)
+- HĐ: 6 năm cọc 1 thanh toán 6
+- Giá Nhượng: 150tr
+- Phí khách: 15tr. khi giao dịch thành công`,
+    // Giả lập AI cắt cụt mất đuôi ". khi giao dịch thành công"
+    initialProp: { landlord_commission_text: "Phí khách: 15tr", furniture_status: "đầy đủ nhà nghỉ" },
+    verify: (res) => {
+      assert.equal(res.price_amount, 49200000);
+      assert.equal(res.price_basis, "total");
+      assert.equal(res.secondary_price_amount, 4100000);
+      assert.equal(res.secondary_price_basis_text, "Theo phòng");
+      assert.equal(res.landlord_commission_text, "Phí khách: 15tr. khi giao dịch thành công");
+      assert.equal(res.our_share_text, null);
+    },
+  },
 ];
 
 let passed = 0;

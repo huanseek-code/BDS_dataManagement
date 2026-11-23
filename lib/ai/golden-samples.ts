@@ -764,6 +764,92 @@ export interface GroundingAuditResult {
 }
 
 /**
+ * PHÂN TÍCH GIÁ KÉP: ĐƠN GIÁ THEO PHÒNG / SÀN + TỔNG GIÁ CẢ CĂN (Dual Price Extractor: Unit Price + Total Price)
+ * Ví dụ: "4tr1/p (49,2tr)" hoặc "4,1 triệu/phòng (tổng 49,2 triệu)"
+ * -> Lưu cả 2 mức giá riêng biệt để lọc/so sánh, tuyệt đối không lấy trung bình:
+ *    - Hàng 1 (Tổng giá): 49.200.000 VND (Tổng căn)
+ *    - Hàng 2 (Giá theo phòng): 4.100.000 VND (Theo phòng)
+ */
+export function extractDualUnitAndTotalPrice(rawText: string): {
+  totalAmount: number;
+  totalCurrency: string;
+  totalBasis: string;
+  totalBasisText: string;
+  secondaryAmount: number;
+  secondaryCurrency: string;
+  secondaryBasis: string;
+  secondaryBasisText: string;
+  secondaryPeriod: string | null;
+  secondaryTextSnippet: string;
+  combinedPriceText: string;
+} | null {
+  if (!rawText || typeof rawText !== "string") return null;
+
+  const parseVnPriceToken = (majorStr: string, unitStr: string, minorStr?: string): number => {
+    const major = parseFloat(majorStr.replace(",", "."));
+    const unit = unitStr.toLowerCase();
+    let val = major;
+    if (minorStr && /^\d+$/.test(minorStr)) {
+      val = major + parseInt(minorStr, 10) / Math.pow(10, minorStr.length);
+    }
+    const mult = unit.startsWith("t") && !unit.startsWith("tr") ? 1000000000 : 1000000;
+    return Math.round(val * mult);
+  };
+
+  // Mẫu 1: "4tr1/p (49,2tr)", "4,1tr/phòng (49.2tr)", "3tr8/1p (tổng 45,6tr)"
+  const perRoomAndTotalRegex =
+    /(\d+(?:[.,]\d+)?)\s*(tr|triệu|trieu|củ)(\d{1,3})?\s*\/\s*(?:1\s*)?(p|phòng|phong|pkk)\b[^\n(]{0,20}\(\s*(?:tổng\s*)?(\d+(?:[.,]\d+)?)\s*(tr|triệu|trieu|củ|tỷ|ty)(\d{1,3})?(?:\s*\/\s*(tháng|thang|th))?\s*\)/i;
+  const m1 = rawText.match(perRoomAndTotalRegex);
+  if (m1) {
+    const unitPrice = parseVnPriceToken(m1[1], m1[2], m1[3]);
+    const totalPrice = parseVnPriceToken(m1[5], m1[6], m1[7]);
+    const period = m1[8] ? "Theo tháng" : null;
+    if (unitPrice > 0 && totalPrice > unitPrice) {
+      return {
+        totalAmount: totalPrice,
+        totalCurrency: "VND",
+        totalBasis: "total",
+        totalBasisText: "Tổng căn",
+        secondaryAmount: unitPrice,
+        secondaryCurrency: "VND",
+        secondaryBasis: "per_room",
+        secondaryBasisText: "Theo phòng",
+        secondaryPeriod: period,
+        secondaryTextSnippet: `${m1[1]}${m1[2]}${m1[3] || ""}/${m1[4]}`,
+        combinedPriceText: m1[0].trim(),
+      };
+    }
+  }
+
+  // Mẫu 2 (ngược thứ tự): "49,2tr (4tr1/p)" hoặc "49,2 triệu (4,1tr/phòng)"
+  const totalAndPerRoomRegex =
+    /(\d+(?:[.,]\d+)?)\s*(tr|triệu|trieu|củ|tỷ|ty)(\d{1,3})?(?:\s*\/\s*(tháng|thang|th))?\s*\(\s*(\d+(?:[.,]\d+)?)\s*(tr|triệu|trieu|củ)(\d{1,3})?\s*\/\s*(?:1\s*)?(p|phòng|phong|pkk)\b\s*\)/i;
+  const m2 = rawText.match(totalAndPerRoomRegex);
+  if (m2) {
+    const totalPrice = parseVnPriceToken(m2[1], m2[2], m2[3]);
+    const unitPrice = parseVnPriceToken(m2[5], m2[6], m2[7]);
+    const period = m2[4] ? "Theo tháng" : null;
+    if (unitPrice > 0 && totalPrice > unitPrice) {
+      return {
+        totalAmount: totalPrice,
+        totalCurrency: "VND",
+        totalBasis: "total",
+        totalBasisText: "Tổng căn",
+        secondaryAmount: unitPrice,
+        secondaryCurrency: "VND",
+        secondaryBasis: "per_room",
+        secondaryBasisText: "Theo phòng",
+        secondaryPeriod: period,
+        secondaryTextSnippet: `${m2[5]}${m2[6]}${m2[7] || ""}/${m2[8]}`,
+        combinedPriceText: m2[0].trim(),
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
  * PHÂN TÍCH KHOẢNG GIÁ & ĐỐI CHIẾU MÂU THUẪN GIÁ TIÊU ĐỀ VS NỘI DUNG (Price Range & Title-Body Conflict Analyzer)
  * - Nếu cùng một phương án có khoảng giá rõ ràng (VD: "35-40 Triệu" -> min=35tr, max=40tr, midpoint=37.5tr tham khảo, giữ nguyên câu gốc).
  * - Nếu tiêu đề và nội dung báo 2 mức giá / khoảng giá khác nhau (VD: tiêu đề "37-40TRIỆU", nội dung "35-40 Triệu") -> giữ cả hai câu gốc, lấy trung điểm của nội dung chi tiết làm giá tham khảo và gắn cờ needsConflictConfirmation = true.
@@ -1109,11 +1195,36 @@ export function auditAndVerifyExtractedProperty(
     prop.price_currency = "VND";
   }
 
-  // 1b. Phân tích Khoảng giá (Min-Max -> Trung điểm tham khảo) & Kiểm tra mâu thuẫn giá Tiêu đề vs Nội dung
+  // 1b. Phân tích Giá kép (Giá theo phòng + Tổng giá, VD: "4tr1/p (49,2tr)") & Khoảng giá (Min-Max -> Trung điểm tham khảo) & Mâu thuẫn giá Tiêu đề vs Nội dung
   const confirmation_reasons: string[] = [];
   if (text.length > 0) {
-    const priceAnalysis = analyzePriceRangeAndConflicts(text, prop.price_amount, prop.price_text);
-    if (priceAnalysis.hasRange) {
+    const dualPrice = extractDualUnitAndTotalPrice(text);
+    if (dualPrice) {
+      prop.price_amount = dualPrice.totalAmount;
+      prop.price_currency = dualPrice.totalCurrency;
+      prop.price_basis = dualPrice.totalBasis;
+      prop.price_text = dualPrice.combinedPriceText;
+      prop.secondary_price_amount = dualPrice.secondaryAmount;
+      prop.secondary_price_currency = dualPrice.secondaryCurrency;
+      prop.secondary_price_basis = dualPrice.secondaryBasis;
+      prop.secondary_price_basis_text = dualPrice.secondaryBasisText;
+      prop.secondary_price_period = dualPrice.secondaryPeriod;
+      prop.secondary_price_text = dualPrice.secondaryTextSnippet;
+      if (prop.key_details && typeof prop.key_details === "object") {
+        prop.key_details.secondary_price_amount = dualPrice.secondaryAmount;
+        prop.key_details.secondary_price_currency = dualPrice.secondaryCurrency;
+        prop.key_details.secondary_price_basis = dualPrice.secondaryBasis;
+        prop.key_details.secondary_price_basis_text = dualPrice.secondaryBasisText;
+        prop.key_details.secondary_price_period = dualPrice.secondaryPeriod;
+        prop.key_details.secondary_price_text = dualPrice.secondaryTextSnippet;
+      }
+      audit_notes.push(
+        `Lưu riêng 2 mức giá: Tổng giá ${dualPrice.totalAmount.toLocaleString("en-US")} VND (${dualPrice.totalBasisText}) & Đơn giá ${dualPrice.secondaryAmount.toLocaleString("en-US")} VND (${dualPrice.secondaryBasisText})`
+      );
+    }
+
+    const priceAnalysis = !dualPrice ? analyzePriceRangeAndConflicts(text, prop.price_amount, prop.price_text) : null;
+    if (priceAnalysis && priceAnalysis.hasRange) {
       prop.price_amount = priceAnalysis.referenceAmount;
       prop.price_min = priceAnalysis.priceMin;
       prop.price_max = priceAnalysis.priceMax;
@@ -1282,12 +1393,20 @@ export function auditAndVerifyExtractedProperty(
   prop.landlord_commission_text = cleanField(prop.landlord_commission_text);
   prop.our_share_text = cleanField(prop.our_share_text);
 
-  // 5b. QUY TẮC HOA HỒNG MỚI (100% Text nguyên bản - Không chép 1 con số vào 2 mục - Không tự điền Phần chia Huanseek khi tin không nói rõ)
+  // 5b. QUY TẮC HOA HỒNG MỚI (100% Text nguyên bản - Bảo toàn trọn vẹn điều kiện đi kèm phí như "khi giao dịch thành công" - Không chép 1 con số vào 2 mục)
   if (text.length > 0) {
-    // Trích câu gốc hoa hồng từ tin nhắn nếu cả 2 ô đang trống
+    // Luôn quét dòng hoa hồng/phí nguyên bản trong tin nhắn gốc
     const rawCommFromText = extractCommissionFallback(text);
     if (!prop.landlord_commission_text && !prop.our_share_text && rawCommFromText) {
       prop.landlord_commission_text = rawCommFromText;
+    } else if (prop.landlord_commission_text && rawCommFromText) {
+      // Nếu AI đã cắt cụt mất điều kiện đi kèm ở phía sau dấu chấm (VD: AI chỉ lấy "Phí khách: 20tr" hoặc "15tr." nhưng dòng gốc ghi "Phí khách: 20tr. khi giao dịch thành công")
+      // -> Tự động khôi phục trọn vẹn cả dòng phí + điều kiện từ văn bản gốc!
+      const curLow = prop.landlord_commission_text.trim().toLowerCase().replace(/[.]+$/, "");
+      const rawLow = rawCommFromText.trim().toLowerCase();
+      if (rawLow.length > curLow.length && (rawLow.includes(curLow) || /khi\s+giao\s+dịch|thành\s+công|khi\s+ký/i.test(rawLow))) {
+        prop.landlord_commission_text = rawCommFromText;
+      }
     }
 
     // Nếu AI chỉ điền vào our_share_text mà để trống landlord_commission_text, kiểm tra xem tin gốc có thực sự nói rõ "chia bên mình / huanseek" không
@@ -1469,7 +1588,7 @@ export function extractLeaseTermFallback(text: string): string | null {
 export function extractCommissionFallback(text: string): string | null {
   if (!text) return null;
   const match = text.match(
-    /(?:🌹\s*)?(?:hoa\s*hồng(?:\s*sale|\s*chủ\s*nhà)?|\bhh(?:\s*sale|\s*chủ\s*nhà)?|phí\s*(?:môi\s*giới|mô\s*giới|mg|sale)?|\bmg)\s*[:=-]?\s*(\d+[^\n]*)/i
+    /(?:🌹\s*)?(?:hoa\s*hồng(?:\s*sale|\s*chủ\s*nhà|\s*khách)?|\bhh(?:\s*sale|\s*chủ\s*nhà|\s*khách)?|phí\s*(?:môi\s*giới|mô\s*giới|mg|sale|khách)?|\bmg)\s*[:=-]?\s*(\d+[^\r\n]*)/i
   );
   if (match) {
     let full = match[0].replace(/^🌹\s*/, "").trim().replace(/^[;,\s:-]+|[;,\s.-]+$/g, "");
@@ -1478,7 +1597,7 @@ export function extractCommissionFallback(text: string): string | null {
       return full;
     }
   }
-  const combineMatch = text.match(/trừ\s*\d+%\s*cho\s*bên\s*kết\s*hợp/i);
+  const combineMatch = text.match(/trừ\s*\d+%\s*cho\s*bên\s*kết\s*hợp[^\r\n]*/i);
   if (combineMatch) return combineMatch[0].trim();
   return null;
 }
