@@ -1183,11 +1183,11 @@ export function InboxView({
                         </div>
                       </div>
 
-                      {/* HÀNG 2: Mức giá thứ 2 / Đơn giá theo phòng đi kèm (Nếu tin chỉ có 1 mức giá thì hàng này để trống) */}
+                      {/* HÀNG 2: Mức giá thứ 2 (Nếu tin chỉ có 1 mức giá thì hàng này để trống) */}
                       <div className="pt-2 mt-2 border-t border-dashed border-slate-200 space-y-1.5">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-semibold text-slate-500">
-                            Mức giá thứ 2 / Đơn giá theo phòng (chỉ điền khi tin có 2 mức giá):
+                            Mức giá thứ 2 (chỉ điền khi tin có 2 mức giá):
                           </span>
                         </div>
                         <div className="grid grid-cols-3 gap-2">

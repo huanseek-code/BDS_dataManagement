@@ -134,13 +134,29 @@ export async function GET() {
       ? new Date(approvedAt).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })
       : "";
 
+    const primaryPriceLine =
+      p.price_amount
+        ? `${Number(p.price_amount).toLocaleString("vi-VN")} ${p.price_currency || "VND"}${
+            p.price_basis === "per_m2" ? "/m²" : p.price_basis === "per_floor" ? "/sàn" : " (Tổng căn)"
+          }${p.price_period === "month" || p.price_period === "Theo tháng" ? "/tháng" : ""}`
+        : p.price_text || "";
+    const secondaryAmt = typeof p.key_details === "object" ? p.key_details?.secondary_price_amount : null;
+    const secondaryBasisText =
+      typeof p.key_details === "object"
+        ? p.key_details?.secondary_price_basis_text || "Theo phòng"
+        : "Theo phòng";
+    const secondaryPriceLine = secondaryAmt
+      ? `${Number(secondaryAmt).toLocaleString("vi-VN")} ${p.key_details?.secondary_price_currency || p.price_currency || "VND"} (${secondaryBasisText})`
+      : "";
+    const combinedPriceLines = [primaryPriceLine, secondaryPriceLine].filter(Boolean).join("\n");
+
     worksheet.addRow({
       code: p.code,
       address: p.address_text,
       types: Array.isArray(p.property_types) ? p.property_types.join(", ") : "",
       floor_area: p.floor_area_m2 || "",
       total_area: p.total_lease_area_m2 || "",
-      price: p.price_text || (p.price_amount ? `${p.price_amount.toLocaleString()} VND` : ""),
+      price: combinedPriceLines || p.price_text || "",
       key_details: keyDetails,
       partner: p.primary_partner?.display_name || "",
       partner_first_seen: p.primary_partner?.first_seen_at

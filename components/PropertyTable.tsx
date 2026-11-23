@@ -181,6 +181,10 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
       price_period: row.price_period || "",
       price_basis: row.price_basis || "total",
       price_text: row.price_text || "",
+      secondary_price_amount: row.key_details?.secondary_price_amount ?? "",
+      secondary_price_currency: row.key_details?.secondary_price_currency || "VND",
+      secondary_price_basis_text: row.key_details?.secondary_price_basis_text || "",
+      secondary_price_period: row.key_details?.secondary_price_period || "",
       landlord_commission_text: row.landlord_commission_text || "",
       our_share_percent: row.our_share_percent ?? "",
       our_share_text: row.our_share_text || "",
@@ -229,6 +233,14 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
               furniture_list: editForm.furniture_list || "",
               handover_condition: editForm.furniture_status || editForm.handover_condition || "chưa rõ",
               rental_options: editForm.rental_options,
+              secondary_price_amount: editForm.secondary_price_amount
+                ? Number(editForm.secondary_price_amount)
+                : null,
+              secondary_price_currency: editForm.secondary_price_amount
+                ? editForm.secondary_price_currency || "VND"
+                : null,
+              secondary_price_basis_text: editForm.secondary_price_basis_text || null,
+              secondary_price_period: editForm.secondary_price_period || null,
             },
             rental_options: editForm.rental_options,
           },
@@ -488,7 +500,7 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
                         {row.total_lease_area_m2 ? `${row.total_lease_area_m2.toLocaleString()} m²` : "—"}
                       </td>
 
-                      {/* 6. Giá chào (TRỤ CỘT 7: Hỗ trợ Đa phương án) */}
+                      {/* 6. Giá chào (Mỗi loại mức giá hiển thị một dòng riêng biệt) */}
                       <td className="p-3 font-semibold text-emerald-700">
                         {hasMultiOptions ? (
                           <div className="space-y-1">
@@ -505,8 +517,21 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
                             </div>
                           </div>
                         ) : (
-                          <div>
-                            <div>{formatPrice(row.price_amount ?? null, row.price_currency, locale, row.price_basis, row.price_period)}</div>
+                          <div className="space-y-1">
+                            <div>
+                              {formatPrice(row.price_amount ?? null, row.price_currency, locale, row.price_basis, row.price_period)}
+                            </div>
+                            {row.key_details?.secondary_price_amount && (
+                              <div className="text-sky-700 font-semibold pt-0.5 border-t border-slate-100">
+                                {formatPrice(
+                                  Number(row.key_details.secondary_price_amount),
+                                  row.key_details.secondary_price_currency || row.price_currency || "VND",
+                                  locale,
+                                  row.key_details.secondary_price_basis_text || row.key_details.secondary_price_basis || "per_room",
+                                  row.key_details.secondary_price_period || null
+                                )}
+                              </div>
+                            )}
                             {row.price_text && (
                               <div className="text-[11px] text-slate-500 font-normal">
                                 {row.price_text}
@@ -1025,30 +1050,84 @@ export function PropertyTable({ initialData }: { initialData: PropertyRow[] }) {
                     </div>
                   </div>
 
-                  {/* Giá tiền */}
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="col-span-2">
-                      <label className="text-[11px] font-semibold text-slate-600 block mb-1">
-                        Đơn giá chào
-                      </label>
-                      <input
-                        type="number"
-                        value={editForm.price_amount}
-                        onChange={(e) => setEditForm({ ...editForm, price_amount: e.target.value })}
-                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white font-semibold text-emerald-700"
-                      />
+                  {/* Giá tiền (Hàng 1 & Hàng 2) */}
+                  <div className="space-y-2 p-3 bg-slate-50/80 rounded-xl border border-slate-200">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="col-span-2">
+                        <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                          Đơn giá chào
+                        </label>
+                        <input
+                          type="number"
+                          value={editForm.price_amount}
+                          onChange={(e) => setEditForm({ ...editForm, price_amount: e.target.value })}
+                          className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white font-semibold text-emerald-700"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                          Tiền tệ
+                        </label>
+                        <input
+                          type="text"
+                          value={editForm.price_currency || "VND"}
+                          onChange={(e) => setEditForm({ ...editForm, price_currency: e.target.value })}
+                          placeholder="VND"
+                          className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 bg-white font-semibold text-slate-800"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="text-[11px] font-semibold text-slate-600 block mb-1">
-                        Tiền tệ
-                      </label>
-                      <input
-                        type="text"
-                        value={editForm.price_currency || "VND"}
-                        onChange={(e) => setEditForm({ ...editForm, price_currency: e.target.value })}
-                        placeholder="VND"
-                        className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 bg-slate-50 focus:bg-white font-semibold text-slate-800"
-                      />
+
+                    <div className="pt-2 border-t border-dashed border-slate-200 space-y-1.5">
+                      <span className="text-[10px] font-semibold text-slate-500 block">
+                        Mức giá thứ 2 (chỉ điền khi tin có 2 mức giá):
+                      </span>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="col-span-2">
+                          <input
+                            type="number"
+                            value={editForm.secondary_price_amount ?? ""}
+                            onChange={(e) => setEditForm({ ...editForm, secondary_price_amount: e.target.value })}
+                            placeholder="Để trống nếu chỉ có 1 mức giá..."
+                            className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white font-semibold text-sky-700"
+                          />
+                        </div>
+                        <div>
+                          <input
+                            type="text"
+                            value={editForm.secondary_price_currency || "VND"}
+                            onChange={(e) => setEditForm({ ...editForm, secondary_price_currency: e.target.value })}
+                            placeholder="VND"
+                            className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 bg-white font-semibold text-slate-800"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] font-semibold text-slate-500 block mb-0.5">
+                            Cách tính giá (Hàng 2)
+                          </label>
+                          <input
+                            type="text"
+                            value={editForm.secondary_price_basis_text ?? ""}
+                            onChange={(e) => setEditForm({ ...editForm, secondary_price_basis_text: e.target.value })}
+                            placeholder="Theo phòng / Theo tầng/sàn / Theo m²..."
+                            className="w-full px-2 py-1 text-xs rounded border border-slate-200 bg-white text-slate-700 font-medium"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-semibold text-slate-500 block mb-0.5">
+                            Kỳ hạn giá (Hàng 2)
+                          </label>
+                          <input
+                            type="text"
+                            value={editForm.secondary_price_period ?? ""}
+                            onChange={(e) => setEditForm({ ...editForm, secondary_price_period: e.target.value })}
+                            placeholder="Theo tháng / Theo năm / Một lần..."
+                            className="w-full px-2 py-1 text-xs rounded border border-slate-200 bg-white text-slate-700 font-medium"
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
 
